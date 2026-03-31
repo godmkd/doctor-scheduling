@@ -525,6 +525,35 @@ function runAutoSchedule(){
       }
       if(!placed) break;
     }
+    // Pass 3: still not at target — take employee's slot (they'll be re-filled in Phase 4)
+    let retry3 = 0;
+    while(countWorkDays(sid) < person.desiredDays && retry3 < 200){
+      retry3++;
+      let placed = false;
+      const days = Array.from({length:28}, (_,i) => i).sort(() => Math.random() - 0.5);
+      for(const d of days){
+        if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+        if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
+        if(wouldExceedConsecutiveIfAdded(sid, d)) continue;
+        if(person.rule4 && isWeekend(d)){
+          const dow = getDow(d);
+          if(dow === 6 && d+1 < 28 && isWorking(sid, d+1)) continue;
+          if(dow === 0 && d-1 >= 0 && isWorking(sid, d-1)) continue;
+        }
+        const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
+        for(const shift of shifts){
+          if(violatesNightMorning(sid, d, shift)) continue;
+          const emp = state.staff.find(p => p.role === 'employee' && getAssignment(p.id, d) === shift);
+          if(emp){
+            clearAssignment(emp.id, d);
+            setAssignment(sid, d, shift);
+            placed = true; break;
+          }
+        }
+        if(placed) break;
+      }
+      if(!placed) break;
+    }
   }
 
   // Phase 4: Employees fill remaining open slots (round-robin, randomized)
@@ -800,6 +829,71 @@ function runAutoSchedule(){
       }
     }
   });
+
+  // Phase 10: Post-swap rule fix — check all hard rules, try same-day swaps to fix violations
+  for(let fixIter = 0; fixIter < 50; fixIter++){
+    let fixed = false;
+    state.staff.forEach(person => {
+      const sid = person.id;
+      for(let d = 1; d < 28; d++){
+        // Fix night-morning violation
+        if(!person.allowNightToMorning && getAssignment(sid, d) === '早' && getAssignment(sid, d-1) === '晚'){
+          // Try swap this 早 with someone else's non-早 on same day
+          const other = state.staff.find(p2 => {
+            if(p2.id === sid) return false;
+            const s2 = getAssignment(p2.id, d);
+            if(!s2 || s2 === '休' || s2 === '早') return false;
+            // Can person take p2's shift? Can p2 take 早?
+            if(d > 0 && getAssignment(p2.id, d-1) === '晚' && !p2.allowNightToMorning) return false;
+            return true;
+          });
+          if(other){
+            const otherShift = getAssignment(other.id, d);
+            clearAssignment(other.id, d);
+            clearAssignment(sid, d);
+            setAssignment(sid, d, otherShift);
+            setAssignment(other.id, d, '早');
+            fixed = true;
+          }
+        }
+      }
+      // Fix consecutive > 6
+      let run = 0;
+      for(let d = 0; d < 28; d++){
+        if(isWorking(sid, d)){ run++; }
+        else { run = 0; continue; }
+        if(run > 6){
+          // Set this day to 休 to break the streak
+          clearAssignment(sid, d);
+          setAssignment(sid, d, '休');
+          fixed = true;
+          run = 0;
+        }
+      }
+      // Fix rule4: consecutive Sat-Sun both working
+      if(person.rule4){
+        for(let d = 0; d < 27; d++){
+          if(getDow(d) === 6 && isWorking(sid, d) && isWorking(sid, d+1)){
+            // Try swap Sunday with someone who's off Sunday
+            const sundayShift = getAssignment(sid, d+1);
+            const swapper = state.staff.find(p2 => {
+              if(p2.id === sid) return false;
+              if(isWorking(p2.id, d+1)) return false;
+              if(isDayOff(p2.id, d+1)) return false;
+              return canAssignForAuto(p2.id, d+1, sundayShift);
+            });
+            if(swapper){
+              clearAssignment(sid, d+1);
+              setAssignment(swapper.id, d+1, sundayShift);
+              setAssignment(sid, d+1, '休');
+              fixed = true;
+            }
+          }
+        }
+      }
+    });
+    if(!fixed) break;
+  }
 
   // Check: managers/supervisors MUST hit exact desiredDays, retry up to 10 times if not
   const leadersMet = state.staff.filter(s => s.role === 'manager' || s.role === 'supervisor')
