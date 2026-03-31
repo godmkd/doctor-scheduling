@@ -354,27 +354,14 @@ function slotAvailable(di, shift){
 }
 
 // ===== CONSTRAINTS =====
-function wouldExceedConsecutive(sid, di){
-  let run = 1;
-  for(let d = di - 1; d >= 0; d--){
-    if(isWorking(sid, d)) run++; else break;
-  }
-  for(let d = di + 1; d < 28; d++){
-    if(isWorking(sid, d)) run++; else break;
-  }
-  return run > 6;
-}
-
 function isWorking(sid, di){
   const a = getAssignment(sid, di);
   return !!a && a !== '休';
 }
 
 function wouldExceedConsecutiveIfAdded(sid, di){
-  // Temporarily check
   let runBefore = 0;
   for(let d = di - 1; d >= 0; d--){
-    if(isWorking(sid, d) || isDayOff(sid, d) === false && false) { /* nope */ }
     if(isWorking(sid, d)) runBefore++; else break;
   }
   let runAfter = 0;
@@ -396,20 +383,6 @@ function violatesNightMorning(sid, di, shift){
   return false;
 }
 
-function checkRule4(sid, di){
-  // rule4: consecutive Sat-Sun cannot both be working
-  // If adding di would cause a Sat+Sun pair to both be working, return false
-  const person = getStaffById(sid);
-  if(!person || !person.rule4) return true;
-  const dow = getDow(di);
-  if(dow === 6){ // Saturday — check if next day (Sunday) is working
-    if(di + 1 < 28 && isWorking(sid, di + 1)) return false;
-  } else if(dow === 0){ // Sunday — check if previous day (Saturday) is working
-    if(di - 1 >= 0 && isWorking(sid, di - 1)) return false;
-  }
-  return true;
-}
-
 function checkRule5(sid){
   // Must have at least 2 Sat/Sun off in 28 days
   const person = getStaffById(sid);
@@ -427,45 +400,6 @@ function countFreeWeekendDays(sid){
     if(isWeekend(d) && !isWorking(sid, d)) count++;
   }
   return count;
-}
-
-function canAssign(sid, di, shift){
-  if(isDayOff(sid, di)) return false;
-  if(isWorking(sid, di)) return false;
-  // Weekly fixed off day
-  const personWO = getStaffById(sid);
-  if(personWO && personWO.weeklyOff && personWO.weeklyOff[getDow(di)]) return false;
-  const req = getDayReq(di);
-  if(!req[shift] || req[shift] === 0) return false;
-  if(!slotAvailable(di, shift)) return false;
-  if(wouldExceedConsecutiveIfAdded(sid, di)) return false;
-  if(violatesNightMorning(sid, di, shift)) return false;
-  // Rule 4 check: consecutive Sat-Sun cannot both work
-  const person = getStaffById(sid);
-  if(person && person.rule4 && isWeekend(di)){
-    const dow = getDow(di);
-    if(dow === 6 && di + 1 < 28 && isWorking(sid, di + 1)) return false; // Sat + Sun both working
-    if(dow === 0 && di - 1 >= 0 && isWorking(sid, di - 1)) return false; // Sun + Sat both working
-  }
-  // Rule 5 check
-  if(person && person.rule5 && isWeekend(di)){
-    if(countFreeWeekendDays(sid) <= 2) return false;
-  }
-  // Rule 6: Monday must be evening shift
-  if(person && person.rule6 && getDow(di) === 1 && shift !== '晚' && slotAvailable(di, '晚')){
-    return false;
-  }
-  // Rule 7: Tue-Thu morning only
-  if(person && person.rule7){
-    const dow = getDow(di);
-    if(dow >= 2 && dow <= 4 && shift !== '中') return false;
-  }
-  // Prefer night: if evening slot available, block other shifts
-  if(person && person.preferNight && shift !== '晚'){
-    const reqPN = getDayReq(di);
-    if(reqPN['晚'] && getSlotCount(di, '晚') < reqPN['晚']) return false;
-  }
-  return true;
 }
 
 // ===== AUTO SCHEDULE =====
@@ -526,10 +460,9 @@ function runAutoSchedule(){
         for(const d of days){
           if(isDayOff(sid,d) || isWorking(sid,d)) continue;
           if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
-          if(wouldExceedConsecutiveIfAdded(sid, d)) continue;
           const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
           for(const shift of shifts){
-            if(violatesNightMorning(sid, d, shift)) continue;
+            if(!canAssignForAuto(sid, d, shift)) continue;
             const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
             if(needed <= 0) continue;
             setAssignment(sid, d, shift);
@@ -1022,18 +955,6 @@ function validate(silent){
     }
   }
 
-  // Check daily staffing
-  for(let d = 0; d < 28; d++){
-    const req = getDayReq(d);
-    for(const shift of SHIFTS){
-      if(req[shift] > 0){
-        const count = getSlotCount(d, shift);
-        if(count < req[shift]){
-          warnings.push({type:'warn',msg:`${getDayLabel(d)}(${DOW_NAMES[getDow(d)]}) ${shift}班：需${req[shift]}人，僅${count}人`});
-        }
-      }
-    }
-  }
   return warnings;
 }
 
@@ -1067,7 +988,7 @@ function renderSidebar(){
       let shiftCounts = {早:0,中:0,晚:0};
       for(let d=0;d<28;d++){
         const a = getAssignment(person.id,d);
-        if(a) shiftCounts[a]++;
+        if(a && a !== '休') shiftCounts[a]++;
       }
 
       const targetLabel = person.role === 'employee'
@@ -1465,7 +1386,7 @@ function exportSchedule(){
       } else {
         const a = getAssignment(p.id, d);
         text += (a || '') + '\t';
-        if(a) total++;
+        if(a && a !== '休') total++;
       }
     }
     text += total + '\n';
