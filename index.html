@@ -504,7 +504,7 @@ function runAutoSchedule(){
       }
       if(!placed) break;
     }
-    // Pass 2: fill open SLOTS only (no overfill), relax other rules
+    // Pass 2: fill open slots, still enforce hard rules (consecutive, night-morning, rule4)
     let retry2 = 0;
     while(countWorkDays(sid) < person.desiredDays && retry2 < 200){
       retry2++;
@@ -513,8 +513,16 @@ function runAutoSchedule(){
       for(const d of days){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
         if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
+        if(wouldExceedConsecutiveIfAdded(sid, d)) continue;
+        // rule4: Sat-Sun no consecutive work
+        if(person.rule4 && isWeekend(d)){
+          const dow = getDow(d);
+          if(dow === 6 && d+1 < 28 && isWorking(sid, d+1)) continue;
+          if(dow === 0 && d-1 >= 0 && isWorking(sid, d-1)) continue;
+        }
         const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
         for(const shift of shifts){
+          if(violatesNightMorning(sid, d, shift)) continue;
           const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
           if(needed <= 0) continue;
           setAssignment(sid, d, shift);
