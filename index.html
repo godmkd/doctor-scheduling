@@ -539,12 +539,14 @@ function runAutoSchedule(){
         days.sort(() => Math.random() - 0.5);
         for(const d of days){
           if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+          if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
           const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
           for(const shift of shifts){
-            if(canAssignForAuto(sid,d,shift)){
-              setAssignment(sid, d, shift);
-              myWeekShifts++; added = true; break;
-            }
+            // Only check slot availability — ignore other rules
+            const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
+            if(needed <= 0) continue;
+            setAssignment(sid, d, shift);
+            myWeekShifts++; added = true; break;
           }
           if(added) break;
         }
