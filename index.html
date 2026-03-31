@@ -507,14 +507,81 @@ function runAutoSchedule(){
     }
   });
 
-  // Phase 2A: Fill managers and supervisors TOGETHER (round-robin, randomized)
+  // Phase 2: Employees FIRST — guarantee each employee gets ≥3 shifts per week
+  const empList = state.staff.filter(p => p.role === 'employee');
+  const minWeeklyEmpShifts = empList.length * 3;
+  for(let w = 0; w < 4; w++){
+    // First ensure each individual employee has ≥3 shifts this week
+    for(const person of empList){
+      const sid = person.id;
+      let myWeekShifts = 0;
+      for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+        if(isWorking(sid, d)) myWeekShifts++;
+      }
+      let safety = 0;
+      while(myWeekShifts < 3 && safety < 20){
+        safety++;
+        let added = false;
+        const days = [];
+        for(let d = w*7; d < (w+1)*7 && d < 28; d++) days.push(d);
+        // Shuffle for randomness
+        days.sort(() => Math.random() - 0.5);
+        for(const d of days){
+          if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+          const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
+          for(const shift of shifts){
+            if(canAssignForAuto(sid,d,shift)){
+              setAssignment(sid, d, shift);
+              myWeekShifts++; added = true; break;
+            }
+          }
+          if(added) break;
+        }
+        if(!added) break;
+      }
+    }
+    // Then ensure total employee shifts this week ≥ empCount × 3
+    let weekEmpShifts = 0;
+    for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+      empList.forEach(p => { if(isWorking(p.id, d)) weekEmpShifts++; });
+    }
+    let safety2 = 0;
+    while(weekEmpShifts < minWeeklyEmpShifts && safety2 < 100){
+      safety2++;
+      const sorted = [...empList].sort((a,b) => {
+        let ca=0,cb=0;
+        for(let d=w*7;d<(w+1)*7&&d<28;d++){ if(isWorking(a.id,d))ca++; if(isWorking(b.id,d))cb++; }
+        return ca-cb;
+      });
+      let added = false;
+      for(const person of sorted){
+        const sid = person.id;
+        const days = [];
+        for(let d = w*7; d < (w+1)*7 && d < 28; d++) days.push(d);
+        days.sort(() => Math.random() - 0.5);
+        for(const d of days){
+          if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+          for(const shift of getAvailShifts(d)){
+            if(canAssignForAuto(sid,d,shift)){
+              setAssignment(sid, d, shift);
+              weekEmpShifts++; added = true; break;
+            }
+          }
+          if(added) break;
+        }
+        if(added) break;
+      }
+      if(!added) break;
+    }
+  }
+
+  // Phase 3: Fill managers and supervisors TOGETHER to exact target (round-robin, randomized)
   const leaders = state.staff.filter(s => s.role === 'manager' || s.role === 'supervisor');
   let leaderChanged = true;
   let leaderSafety = 0;
   while(leaderChanged && leaderSafety < 2000){
     leaderSafety++;
     leaderChanged = false;
-    // Shuffle then sort by fewest days (randomness breaks ties)
     const shuffled = [...leaders].sort(() => Math.random() - 0.5);
     shuffled.sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
     for(const person of shuffled){
@@ -533,7 +600,6 @@ function runAutoSchedule(){
         }
       }
       if(options.length === 0) continue;
-      // Random pick from options
       const pick = options[Math.floor(Math.random() * options.length)];
       setAssignment(sid, pick.d, pick.shift);
       leaderChanged = true;
@@ -541,14 +607,13 @@ function runAutoSchedule(){
     }
   }
 
-  // Phase 2B: Fill employees (round-robin, randomized, fill slots that still need people)
+  // Phase 4: Employees fill remaining open slots (round-robin, randomized)
   const employees = state.staff.filter(s => s.role === 'employee');
   let changed = true;
   let safetyCounter = 0;
   while(changed && safetyCounter < 2000){
     safetyCounter++;
     changed = false;
-    // Shuffle then sort by fewest days
     const sorted = [...employees].sort(() => Math.random() - 0.5);
     sorted.sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
     for(const person of sorted){
@@ -568,47 +633,10 @@ function runAutoSchedule(){
         }
       }
       if(options.length === 0) continue;
-      // Random pick
       const pick = options[Math.floor(Math.random() * options.length)];
       setAssignment(sid, pick.d, pick.shift);
       changed = true;
       break;
-    }
-  }
-
-  // Phase 3: Each week must have at least (employee count × 3) employee shifts total
-  const empList = state.staff.filter(p => p.role === 'employee');
-  const minWeeklyEmpShifts = empList.length * 3;
-  for(let w = 0; w < 4; w++){
-    let weekEmpShifts = 0;
-    for(let d = w*7; d < (w+1)*7 && d < 28; d++){
-      empList.forEach(p => { if(isWorking(p.id, d)) weekEmpShifts++; });
-    }
-    let safety = 0;
-    while(weekEmpShifts < minWeeklyEmpShifts && safety < 100){
-      safety++;
-      // Find the employee with fewest shifts this week, try to add one
-      const sorted = [...empList].sort((a,b) => {
-        let ca=0,cb=0;
-        for(let d=w*7;d<(w+1)*7&&d<28;d++){ if(isWorking(a.id,d))ca++; if(isWorking(b.id,d))cb++; }
-        return ca-cb;
-      });
-      let added = false;
-      for(const person of sorted){
-        const sid = person.id;
-        for(let d = w*7; d < (w+1)*7 && d < 28; d++){
-          if(isDayOff(sid,d) || isWorking(sid,d)) continue;
-          for(const shift of getAvailShifts(d)){
-            if(canAssignForAuto(sid,d,shift)){
-              setAssignment(sid, d, shift);
-              weekEmpShifts++; added = true; break;
-            }
-          }
-          if(added) break;
-        }
-        if(added) break;
-      }
-      if(!added) break;
     }
   }
 
