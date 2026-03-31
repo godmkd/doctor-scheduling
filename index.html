@@ -471,28 +471,45 @@ function runAutoSchedule(){
     }
   });
 
-  // Phase 2: Round-robin greedy fill — each round, assign one day to the person with fewest work days
-  const allPeople = [...state.staff].sort((a,b) => {
-    const ro = {manager:0,supervisor:1,employee:2};
-    return ro[a.role] - ro[b.role];
-  });
+  // Phase 2A: Fill managers and supervisors FIRST (greedy, one at a time to target)
+  const leaders = state.staff.filter(s => s.role === 'manager' || s.role === 'supervisor');
+  for(const person of leaders){
+    const sid = person.id;
+    const target = person.desiredDays;
+    let safety = 0;
+    while(countWorkDays(sid) < target && safety < 200){
+      safety++;
+      const options = [];
+      for(let d = 0; d < 28; d++){
+        if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+        const shifts = getAvailShifts(d);
+        for(const shift of shifts){
+          if(canAssignForAuto(sid, d, shift)){
+            const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
+            if(needed <= 0) continue;
+            const urgency = needed * 10 + getSlotDifficulty(d, shift, sid);
+            options.push({d, shift, urgency});
+          }
+        }
+      }
+      if(options.length === 0) break;
+      options.sort((a,b) => b.urgency - a.urgency);
+      setAssignment(sid, options[0].d, options[0].shift);
+    }
+  }
+
+  // Phase 2B: Fill employees with round-robin (fairness: fewest work days first)
+  const employees = state.staff.filter(s => s.role === 'employee');
   let changed = true;
   let safetyCounter = 0;
   while(changed && safetyCounter < 2000){
     safetyCounter++;
     changed = false;
-    // Sort by fewest work days first (for fairness), then by role priority
-    const sorted = [...allPeople].sort((a,b) => {
-      const wa = countWorkDays(a.id), wb = countWorkDays(b.id);
-      if(wa !== wb) return wa - wb;
-      const ro = {manager:0,supervisor:1,employee:2};
-      return ro[a.role] - ro[b.role];
-    });
+    const sorted = [...employees].sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
     for(const person of sorted){
       const sid = person.id;
-      const target = (person.role === 'employee') ? (person.maxDays !== undefined ? person.maxDays : 16) : person.desiredDays;
+      const target = person.maxDays !== undefined ? person.maxDays : 16;
       if(countWorkDays(sid) >= target) continue;
-      // Find best slot for this person
       const options = [];
       for(let d = 0; d < 28; d++){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
@@ -510,7 +527,7 @@ function runAutoSchedule(){
       options.sort((a,b) => b.urgency - a.urgency);
       setAssignment(sid, options[0].d, options[0].shift);
       changed = true;
-      break; // Back to re-sort so next person with fewest days goes
+      break;
     }
   }
 
@@ -617,15 +634,12 @@ function runAutoSchedule(){
     }
   }
 
-  // Fill remaining unassigned days with "休" for people who reached their target
+  // Fill ALL remaining unassigned days with "休" (red label) for every person
   state.staff.forEach(person => {
     const sid = person.id;
-    const target = (person.role === 'employee') ? (person.maxDays !== undefined ? person.maxDays : 16) : person.desiredDays;
-    if(countWorkDays(sid) >= target){
-      for(let d = 0; d < 28; d++){
-        if(!isWorking(sid, d) && !isDayOff(sid, d) && !getAssignment(sid, d)){
-          setAssignment(sid, d, '休');
-        }
+    for(let d = 0; d < 28; d++){
+      if(!isWorking(sid, d) && !isDayOff(sid, d) && !getAssignment(sid, d)){
+        setAssignment(sid, d, '休');
       }
     }
   });
