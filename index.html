@@ -541,9 +541,9 @@ function runAutoSchedule(){
     }
   });
 
-  // Phase 4: Balance check — if work day difference > 2 among same-role employees, try to even out
-  const roles = ['manager','supervisor','employee'];
-  for(const role of roles){
+  // Phase 4: Balance check — if work day difference > 2 among employees only (not managers/supervisors)
+  const balanceRoles = ['employee'];
+  for(const role of balanceRoles){
     const people = state.staff.filter(s => s.role === role);
     if(people.length < 2) continue;
     for(let iter = 0; iter < 50; iter++){
