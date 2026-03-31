@@ -691,22 +691,23 @@ function runAutoSchedule(){
         if(!req[shift]) continue;
         const needed = req[shift] - getSlotCount(d, shift);
         if(needed <= 0) continue;
-        // Find someone who can take this slot, prefer fewest work days
-        const candidates = [...state.staff]
+        // Find EMPLOYEE who can take this slot (managers/supervisors are done, don't touch)
+        const candidates = state.staff
+          .filter(p => p.role === 'employee')
           .filter(p => {
-            const maxT = (p.role === 'employee') ? (p.maxDays !== undefined ? p.maxDays : 28) : (p.desiredDays || 28);
+            const maxT = p.maxDays !== undefined ? p.maxDays : 28;
             return !isDayOff(p.id, d) && !isWorking(p.id, d) && countWorkDays(p.id) < maxT && canAssignForAuto(p.id, d, shift);
           })
           .sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
         if(candidates.length > 0){
-          // Random pick among top 3 (or fewer)
           const top = candidates.slice(0, Math.min(3, candidates.length));
           const pick = top[Math.floor(Math.random() * top.length)];
           setAssignment(pick.id, d, shift);
           forceFillChanged = true;
         } else {
-          // Try anyone regardless of maxDays — slots MUST be filled
-          const desperate = [...state.staff]
+          // Try any employee regardless of maxDays — slots MUST be filled
+          const desperate = state.staff
+            .filter(p => p.role === 'employee')
             .filter(p => !isDayOff(p.id, d) && !isWorking(p.id, d) && canAssignForAuto(p.id, d, shift))
             .sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
           if(desperate.length > 0){
