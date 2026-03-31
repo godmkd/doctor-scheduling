@@ -903,7 +903,7 @@ function renderSidebar(){
           <span style="color:var(--morning)">早${shiftCounts['早']}</span>
           <span style="color:var(--afternoon)">中${shiftCounts['中']}</span>
           <span style="color:var(--evening)">晚${shiftCounts['晚']}</span>
-          <span style="color:var(--off)">休${(state.dayOffs[person.id]||[]).length}</span>
+          <span style="color:var(--off)">休${28 - worked}</span>
         </div>
       </div>`;
     });
@@ -1024,7 +1024,7 @@ function renderMain(){
     const worked = countWorkDays(p.id);
     let sc = {早:0,中:0,晚:0};
     for(let d=0;d<28;d++){ const a=getAssignment(p.id,d); if(a && a !== '休')sc[a]++; }
-    const offCount = (state.dayOffs[p.id]||[]).length;
+    const offCount = 28 - worked;
     let cls = '';
     if(p.role === 'employee'){
       const minD = p.minDays !== undefined ? p.minDays : 12;
