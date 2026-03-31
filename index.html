@@ -581,6 +581,43 @@ function runAutoSchedule(){
     }
   }
 
+  // Phase 3B: Force-fill leaders who didn't reach target — swap with employees if needed
+  for(const person of leaders){
+    const sid = person.id;
+    let forceRetry = 0;
+    while(countWorkDays(sid) < person.desiredDays && forceRetry < 100){
+      forceRetry++;
+      // First try: any slot (even if already full — we'll overfill temporarily)
+      let placed = false;
+      const days = Array.from({length:28}, (_,i) => i).sort(() => Math.random() - 0.5);
+      for(const d of days){
+        if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+        if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
+        // Try available shifts relaxing slot limit
+        const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
+        for(const shift of shifts){
+          // Check rules except slot limit
+          if(wouldExceedConsecutiveIfAdded(sid, d)) continue;
+          if(violatesNightMorning(sid, d, shift)) continue;
+          // Swap: find an employee on this day/shift and take their spot
+          const empOnSlot = state.staff.find(p => p.role === 'employee' && getAssignment(p.id, d) === shift);
+          if(empOnSlot){
+            clearAssignment(empOnSlot.id, d);
+            setAssignment(sid, d, shift);
+            placed = true; break;
+          }
+          // Or if slot has room, just take it
+          if(canAssignForAuto(sid, d, shift)){
+            setAssignment(sid, d, shift);
+            placed = true; break;
+          }
+        }
+        if(placed) break;
+      }
+      if(!placed) break;
+    }
+  }
+
   // Phase 4: Employees fill remaining open slots (round-robin, randomized)
   const employees = state.staff.filter(s => s.role === 'employee');
   let changed = true;
