@@ -758,6 +758,33 @@ function runAutoSchedule(){
     }
   });
 
+  // Phase 8: preferNight swap — people with "優先晚班" swap their non-晚 shift with someone's 晚班
+  state.staff.filter(p => p.preferNight).forEach(person => {
+    const sid = person.id;
+    for(let d = 0; d < 28; d++){
+      const myShift = getAssignment(sid, d);
+      if(!myShift || myShift === '休' || myShift === '晚') continue;
+      // Find someone on this day who has 晚班 and can swap
+      const swapPartner = state.staff.find(p2 => {
+        if(p2.id === sid) return false;
+        if(getAssignment(p2.id, d) !== '晚') return false;
+        if(p2.preferNight) return false; // They also prefer 晚, can't swap
+        // Check if partner can take myShift without violating hard rules
+        if(myShift === '早' && d > 0 && getAssignment(p2.id, d-1) === '晚' && !p2.allowNightToMorning) return false;
+        // Check if person taking 晚 violates night-morning for next day
+        if(d < 27 && getAssignment(sid, d+1) === '早' && !person.allowNightToMorning) return false;
+        if(d > 0 && getAssignment(sid, d-1) === '晚' && myShift === '早' && !person.allowNightToMorning) return false;
+        return true;
+      });
+      if(swapPartner){
+        clearAssignment(swapPartner.id, d);
+        clearAssignment(sid, d);
+        setAssignment(sid, d, '晚');
+        setAssignment(swapPartner.id, d, myShift);
+      }
+    }
+  });
+
   // Check: managers/supervisors MUST hit exact desiredDays, retry up to 10 times if not
   const leadersMet = state.staff.filter(s => s.role === 'manager' || s.role === 'supervisor')
     .every(p => countWorkDays(p.id) === p.desiredDays);
@@ -829,12 +856,7 @@ function canAssignForAuto(sid, di, shift){
   if(person.rule6 && getDow(di) === 1 && shift !== '晚' && slotAvailable(di, '晚')){
     return false;
   }
-  // Rule 7: skip during scheduling — handled by Phase 7 swap after scheduling
-  // Prefer night: if evening slot available, block other shifts
-  if(person.preferNight && shift !== '晚'){
-    const req = getDayReq(di);
-    if(req['晚'] && getSlotCount(di, '晚') < req['晚']) return false;
-  }
+  // Rule 7 & preferNight: skip during scheduling — handled by Phase 7/8 swap after
   return true;
 }
 
