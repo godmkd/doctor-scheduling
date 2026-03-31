@@ -576,32 +576,41 @@ function runAutoSchedule(){
     }
   }
 
-  // Phase 3: Employee min 3 days per week
-  state.staff.filter(p => p.role === 'employee').forEach(person => {
-    const sid = person.id;
-    for(let w = 0; w < 4; w++){
-      let weekDays = 0;
-      for(let d = w*7; d < (w+1)*7 && d < 28; d++){
-        if(isWorking(sid,d)) weekDays++;
-      }
-      let attempts = 0;
-      while(weekDays < 3 && attempts < 20){
-        attempts++;
-        let added = false;
+  // Phase 3: Each week must have at least (employee count × 3) employee shifts total
+  const empList = state.staff.filter(p => p.role === 'employee');
+  const minWeeklyEmpShifts = empList.length * 3;
+  for(let w = 0; w < 4; w++){
+    let weekEmpShifts = 0;
+    for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+      empList.forEach(p => { if(isWorking(p.id, d)) weekEmpShifts++; });
+    }
+    let safety = 0;
+    while(weekEmpShifts < minWeeklyEmpShifts && safety < 100){
+      safety++;
+      // Find the employee with fewest shifts this week, try to add one
+      const sorted = [...empList].sort((a,b) => {
+        let ca=0,cb=0;
+        for(let d=w*7;d<(w+1)*7&&d<28;d++){ if(isWorking(a.id,d))ca++; if(isWorking(b.id,d))cb++; }
+        return ca-cb;
+      });
+      let added = false;
+      for(const person of sorted){
+        const sid = person.id;
         for(let d = w*7; d < (w+1)*7 && d < 28; d++){
           if(isDayOff(sid,d) || isWorking(sid,d)) continue;
           for(const shift of getAvailShifts(d)){
             if(canAssignForAuto(sid,d,shift)){
               setAssignment(sid, d, shift);
-              weekDays++; added = true; break;
+              weekEmpShifts++; added = true; break;
             }
           }
           if(added) break;
         }
-        if(!added) break;
+        if(added) break;
       }
+      if(!added) break;
     }
-  });
+  }
 
   // Phase 4: Balance check — if work day difference > 2 among employees only (not managers/supervisors)
   const balanceRoles = ['employee'];
@@ -911,19 +920,20 @@ function validate(silent){
         warnings.push({type:'error',msg:`${person.name}：上班天數(${worked})超過最多天數(${maxD})`});
       }
     }
-    // Employee min 3 days per week
-    if(person.role === 'employee'){
-      for(let w = 0; w < 4; w++){
-        let wd = 0;
-        for(let d = w*7; d < (w+1)*7 && d < 28; d++){
-          if(isWorking(sid,d)) wd++;
-        }
-        if(wd > 0 && wd < 3){
-          warnings.push({type:'warn',msg:`${person.name}：第${w+1}週僅排${wd}天（至少需3天）`});
-        }
-      }
-    }
   });
+
+  // Check: each week must have at least (employee count × 3) employee shifts
+  const valEmpList = state.staff.filter(s => s.role === 'employee');
+  const minWeeklyTarget = valEmpList.length * 3;
+  for(let w = 0; w < 4; w++){
+    let weekEmpShifts = 0;
+    for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+      valEmpList.forEach(p => { if(isWorking(p.id, d)) weekEmpShifts++; });
+    }
+    if(weekEmpShifts < minWeeklyTarget){
+      warnings.push({type:'error',msg:`第${w+1}週員工班次不足：需${minWeeklyTarget}班（${valEmpList.length}人×3），只有${weekEmpShifts}班`});
+    }
+  }
 
   // Check: all daily shifts must be fully staffed (100 slots total)
   let totalSlots = 0, filledSlots = 0;
