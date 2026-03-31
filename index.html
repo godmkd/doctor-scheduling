@@ -397,21 +397,17 @@ function violatesNightMorning(sid, di, shift){
 }
 
 function checkRule4(sid, di){
-  // If person has rule4: in the week containing di, at least one Sat/Sun must be off
+  // rule4: consecutive Sat-Sun cannot both be working
+  // If adding di would cause a Sat+Sun pair to both be working, return false
   const person = getStaffById(sid);
   if(!person || !person.rule4) return true;
-  const wi = getWeekIndex(di);
-  const weekStart = wi * 7;
-  let hasWeekend = false;
-  let hasFreeWeekend = false;
-  for(let d = weekStart; d < weekStart + 7 && d < 28; d++){
-    if(isWeekend(d)){
-      hasWeekend = true;
-      if(!isWorking(sid, d)) hasFreeWeekend = true;
-    }
+  const dow = getDow(di);
+  if(dow === 6){ // Saturday — check if next day (Sunday) is working
+    if(di + 1 < 28 && isWorking(sid, di + 1)) return false;
+  } else if(dow === 0){ // Sunday — check if previous day (Saturday) is working
+    if(di - 1 >= 0 && isWorking(sid, di - 1)) return false;
   }
-  if(!hasWeekend) return true;
-  return hasFreeWeekend;
+  return true;
 }
 
 function checkRule5(sid){
@@ -444,22 +440,12 @@ function canAssign(sid, di, shift){
   if(!slotAvailable(di, shift)) return false;
   if(wouldExceedConsecutiveIfAdded(sid, di)) return false;
   if(violatesNightMorning(sid, di, shift)) return false;
-  // Rule 4 check
+  // Rule 4 check: consecutive Sat-Sun cannot both work
   const person = getStaffById(sid);
   if(person && person.rule4 && isWeekend(di)){
-    // Check if all other weekend days in this week are already working
-    const wi = getWeekIndex(di);
-    const weekStart = wi * 7;
-    let otherWeekendFree = false;
-    for(let d = weekStart; d < weekStart+7 && d<28; d++){
-      if(d !== di && isWeekend(d) && !isWorking(sid,d) && !isDayOff(sid,d)){
-        // Wait, day off counts as "free" for rule 4 purposes? Yes - day off = not working
-      }
-      if(d !== di && isWeekend(d) && !isWorking(sid,d)){
-        otherWeekendFree = true;
-      }
-    }
-    if(!otherWeekendFree) return false;
+    const dow = getDow(di);
+    if(dow === 6 && di + 1 < 28 && isWorking(sid, di + 1)) return false; // Sat + Sun both working
+    if(dow === 0 && di - 1 >= 0 && isWorking(sid, di - 1)) return false; // Sun + Sat both working
   }
   // Rule 5 check
   if(person && person.rule5 && isWeekend(di)){
@@ -585,7 +571,7 @@ function runAutoSchedule(){
       }
       if(!placed) break;
     }
-    // Pass 2: any open day, pick a random shift (extra person on that shift, no swap)
+    // Pass 2: fill open SLOTS only (no overfill), relax other rules
     let retry2 = 0;
     while(countWorkDays(sid) < person.desiredDays && retry2 < 200){
       retry2++;
@@ -595,9 +581,13 @@ function runAutoSchedule(){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
         if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
         const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
-        if(shifts.length > 0){
-          setAssignment(sid, d, shifts[0]);
+        for(const shift of shifts){
+          const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
+          if(needed <= 0) continue;
+          setAssignment(sid, d, shift);
           placed = true; break;
+        }
+        if(placed) break;
         }
       }
       if(!placed) break;
@@ -858,14 +848,9 @@ function canAssignForAuto(sid, di, shift){
     }
   }
   if(person.rule4 && isWeekend(di)){
-    const wi = getWeekIndex(di);
-    let otherFree = false;
-    for(let d = wi*7; d < (wi+1)*7 && d < 28; d++){
-      if(d !== di && isWeekend(d) && !isWorking(sid,d) && !isDayOff(sid,d)){
-        otherFree = true; break;
-      }
-    }
-    if(!otherFree) return false;
+    const dow = getDow(di);
+    if(dow === 6 && di + 1 < 28 && isWorking(sid, di + 1)) return false;
+    if(dow === 0 && di - 1 >= 0 && isWorking(sid, di - 1)) return false;
   }
   // Rule 5
   if(person.rule5 && isWeekend(di)){
@@ -941,19 +926,11 @@ function validate(silent){
         }
       }
     }
-    // Rule 4: weekend rest
+    // Rule 4: consecutive Sat-Sun cannot both work
     if(person.rule4){
-      for(let w = 0; w < 4; w++){
-        let weekendFree = false;
-        for(let d = w*7; d < (w+1)*7 && d < 28; d++){
-          if(isWeekend(d) && !isWorking(sid,d)) weekendFree = true;
-        }
-        let hasWeekend = false;
-        for(let d = w*7; d < (w+1)*7 && d < 28; d++){
-          if(isWeekend(d)) hasWeekend = true;
-        }
-        if(hasWeekend && !weekendFree){
-          warnings.push({type:'error',msg:`${person.name}：第${w+1}週六日皆有排班（違反六日必休一天）`});
+      for(let d = 0; d < 27; d++){
+        if(getDow(d) === 6 && isWorking(sid, d) && isWorking(sid, d+1)){
+          warnings.push({type:'error',msg:`${person.name}：${getDayLabel(d)}(六)和${getDayLabel(d+1)}(日)連續上班（違反六日擇一休）`});
         }
       }
     }
@@ -1118,7 +1095,7 @@ function renderSidebar(){
             <span>目標天數（必須剛好）：</span>
             <input type="number" min="0" max="28" value="${person.desiredDays}" onchange="updateStaff(${person.id},'desiredDays',this.value)" onclick="event.stopPropagation()">
           </div>`}
-          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule4?'checked':''} onchange="updateStaff(${person.id},'rule4',this.checked)"> 六日必休一天</label>
+          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule4?'checked':''} onchange="updateStaff(${person.id},'rule4',this.checked)"> 六日擇一休（不連續上班）</label>
           <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule5?'checked':''} onchange="updateStaff(${person.id},'rule5',this.checked)"> 至少休兩天週六或週日</label>
           <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule6?'checked':''} onchange="updateStaff(${person.id},'rule6',this.checked)"> 週一上晚班</label>
           <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule7?'checked':''} onchange="updateStaff(${person.id},'rule7',this.checked)"> 週二到四只上午班</label>
@@ -1394,17 +1371,15 @@ function checkRuleViolationsForManual(sid, di, shift){
       return `${person.name}：違反晚班接早班規定（隔天是早班）`;
     }
   }
-  // Rule 4: weekend rest
+  // Rule 4: consecutive Sat-Sun cannot both work
   if(person.rule4 && isWeekend(di)){
-    const wi = getWeekIndex(di);
-    const weekStart = wi * 7;
-    let otherWeekendFree = false;
-    for(let d = weekStart; d < weekStart+7 && d<28; d++){
-      if(d !== di && isWeekend(d) && !isWorking(sid,d)){
-        otherWeekendFree = true; break;
-      }
+    const dow = getDow(di);
+    if(dow === 6 && di + 1 < 28 && isWorking(sid, di + 1)){
+      return `${person.name}：違反「六日擇一休」（週六日不能連續上班）`;
     }
-    if(!otherWeekendFree) return `${person.name}：違反「六日必休一天」規定（該週六日已無其他休息日）`;
+    if(dow === 0 && di - 1 >= 0 && isWorking(sid, di - 1)){
+      return `${person.name}：違反「六日擇一休」（週六日不能連續上班）`;
+    }
   }
   // Rule 5: at least 2 weekend days off
   if(person.rule5 && isWeekend(di)){
