@@ -679,6 +679,45 @@ function runAutoSchedule(){
     }
   }
 
+  // Phase 5: Force fill ALL remaining empty slots — every day's required shifts must be filled
+  let forceFillChanged = true;
+  let forceFillSafety = 0;
+  while(forceFillChanged && forceFillSafety < 500){
+    forceFillSafety++;
+    forceFillChanged = false;
+    for(let d = 0; d < 28; d++){
+      const req = getDayReq(d);
+      for(const shift of SHIFTS){
+        if(!req[shift]) continue;
+        const needed = req[shift] - getSlotCount(d, shift);
+        if(needed <= 0) continue;
+        // Find someone who can take this slot, prefer fewest work days
+        const candidates = [...state.staff]
+          .filter(p => {
+            const maxT = (p.role === 'employee') ? (p.maxDays !== undefined ? p.maxDays : 28) : (p.desiredDays || 28);
+            return !isDayOff(p.id, d) && !isWorking(p.id, d) && countWorkDays(p.id) < maxT && canAssignForAuto(p.id, d, shift);
+          })
+          .sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
+        if(candidates.length > 0){
+          // Random pick among top 3 (or fewer)
+          const top = candidates.slice(0, Math.min(3, candidates.length));
+          const pick = top[Math.floor(Math.random() * top.length)];
+          setAssignment(pick.id, d, shift);
+          forceFillChanged = true;
+        } else {
+          // Try anyone regardless of maxDays — slots MUST be filled
+          const desperate = [...state.staff]
+            .filter(p => !isDayOff(p.id, d) && !isWorking(p.id, d) && canAssignForAuto(p.id, d, shift))
+            .sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
+          if(desperate.length > 0){
+            setAssignment(desperate[0].id, d, shift);
+            forceFillChanged = true;
+          }
+        }
+      }
+    }
+  }
+
   // Check: managers/supervisors MUST hit exact desiredDays, retry up to 10 times if not
   const leadersMet = state.staff.filter(s => s.role === 'manager' || s.role === 'supervisor')
     .every(p => countWorkDays(p.id) === p.desiredDays);
@@ -884,6 +923,21 @@ function validate(silent){
       }
     }
   });
+
+  // Check: all daily shifts must be fully staffed (100 slots total)
+  let totalSlots = 0, filledSlots = 0;
+  for(let d = 0; d < 28; d++){
+    const req = getDayReq(d);
+    for(const shift of SHIFTS){
+      if(!req[shift]) continue;
+      totalSlots += req[shift];
+      const count = getSlotCount(d, shift);
+      filledSlots += Math.min(count, req[shift]);
+      if(count < req[shift]){
+        warnings.push({type:'error',msg:`${getDayLabel(d)}(${DOW_NAMES[getDow(d)]}) ${shift}班：需${req[shift]}人，只有${count}人（未排滿）`});
+      }
+    }
+  }
 
   // Check: each day must have at least one manager or supervisor
   for(let d = 0; d < 28; d++){
