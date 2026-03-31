@@ -507,11 +507,11 @@ function runAutoSchedule(){
     }
   });
 
-  // Phase 2: Employees FIRST — guarantee each employee gets ≥3 shifts per week
+  // Phase 2: Employees FIRST — each employee gets exactly 3 shifts per week
   const empList = state.staff.filter(p => p.role === 'employee');
   const minWeeklyEmpShifts = empList.length * 3;
   for(let w = 0; w < 4; w++){
-    // First ensure each individual employee has ≥3 shifts this week
+    // First ensure each individual employee has exactly 3 shifts this week
     for(const person of empList){
       const sid = person.id;
       let myWeekShifts = 0;
@@ -540,39 +540,7 @@ function runAutoSchedule(){
         if(!added) break;
       }
     }
-    // Then ensure total employee shifts this week ≥ empCount × 3
-    let weekEmpShifts = 0;
-    for(let d = w*7; d < (w+1)*7 && d < 28; d++){
-      empList.forEach(p => { if(isWorking(p.id, d)) weekEmpShifts++; });
-    }
-    let safety2 = 0;
-    while(weekEmpShifts < minWeeklyEmpShifts && safety2 < 100){
-      safety2++;
-      const sorted = [...empList].sort((a,b) => {
-        let ca=0,cb=0;
-        for(let d=w*7;d<(w+1)*7&&d<28;d++){ if(isWorking(a.id,d))ca++; if(isWorking(b.id,d))cb++; }
-        return ca-cb;
-      });
-      let added = false;
-      for(const person of sorted){
-        const sid = person.id;
-        const days = [];
-        for(let d = w*7; d < (w+1)*7 && d < 28; d++) days.push(d);
-        days.sort(() => Math.random() - 0.5);
-        for(const d of days){
-          if(isDayOff(sid,d) || isWorking(sid,d)) continue;
-          for(const shift of getAvailShifts(d)){
-            if(canAssignForAuto(sid,d,shift)){
-              setAssignment(sid, d, shift);
-              weekEmpShifts++; added = true; break;
-            }
-          }
-          if(added) break;
-        }
-        if(added) break;
-      }
-      if(!added) break;
-    }
+    // (exactly 3 per employee per week — no more in this phase)
   }
 
   // Phase 3: Fill managers and supervisors TOGETHER to exact target (round-robin, randomized)
