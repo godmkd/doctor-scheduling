@@ -621,7 +621,7 @@ function runAutoSchedule(){
       }
       if(!placed) break;
     }
-    // Pass 2: relax rules but still respect slot limit
+    // Pass 2: relax rules, still respect slot limit
     let retry2 = 0;
     while(countWorkDays(sid) < person.desiredDays && retry2 < 100){
       retry2++;
@@ -635,6 +635,29 @@ function runAutoSchedule(){
           if(getSlotCount(d, shift) >= getDayReq(d)[shift]) continue;
           setAssignment(sid, d, shift);
           placed = true; break;
+        }
+        if(placed) break;
+      }
+      if(!placed) break;
+    }
+    // Pass 3: swap with employee if all slots full — leader MUST reach target
+    let retry3 = 0;
+    while(countWorkDays(sid) < person.desiredDays && retry3 < 100){
+      retry3++;
+      let placed = false;
+      const days = Array.from({length:28}, (_,i) => i).sort(() => Math.random() - 0.5);
+      for(const d of days){
+        if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+        if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
+        const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
+        for(const shift of shifts){
+          // Find an employee holding this slot and swap
+          const emp = state.staff.find(p => p.role === 'employee' && getAssignment(p.id, d) === shift);
+          if(emp){
+            clearAssignment(emp.id, d);
+            setAssignment(sid, d, shift);
+            placed = true; break;
+          }
         }
         if(placed) break;
       }
