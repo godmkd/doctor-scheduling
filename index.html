@@ -210,7 +210,8 @@ function addStaff(){
     id, name: `員工${id}`,
     role: hasManager ? 'employee' : 'manager',
     desiredDays: 16,
-    rule4: false, rule5: false, rule6: false
+    rule4: false, rule5: false, rule6: false,
+    allowNightToMorning: false
   });
   state.dayOffs[id] = [];
   state.assignments[id] = {};
@@ -328,6 +329,8 @@ function wouldExceedConsecutiveIfAdded(sid, di){
 }
 
 function violatesNightMorning(sid, di, shift){
+  const person = getStaffById(sid);
+  if(person && person.allowNightToMorning) return false;
   if(shift === '早' && di > 0){
     if(getAssignment(sid, di-1) === '晚' && !hasException(sid, di)) return true;
   }
@@ -411,14 +414,171 @@ function runAutoSchedule(){
   // Clear all non-manual (clear all for simplicity)
   state.staff.forEach(s => { state.assignments[s.id] = {}; });
 
-  const roleOrder = ['manager','supervisor','employee'];
-  for(const role of roleOrder){
-    const people = state.staff.filter(s => s.role === role);
-    // Sort by fewer options first (more constrained)
-    for(const person of people){
-      schedulePerson(person);
+  // Phase 1: Place mandatory shifts (manager Sunday/Monday morning, rule6 Monday evening)
+  state.staff.forEach(person => {
+    const sid = person.id;
+    if(person.role === 'manager'){
+      for(let d = 0; d < 28; d++){
+        const dow = getDow(d);
+        if((dow === 0 || dow === 1) && !isDayOff(sid,d) && !isWorking(sid,d)){
+          if(canAssignForAuto(sid,d,'早')) setAssignment(sid, d, '早');
+        }
+      }
+    }
+    if(person.rule6){
+      for(let d = 0; d < 28; d++){
+        if(getDow(d) === 1 && !isDayOff(sid,d) && !isWorking(sid,d)){
+          if(canAssignForAuto(sid,d,'晚')) setAssignment(sid, d, '晚');
+        }
+      }
+    }
+  });
+
+  // Phase 2: Round-robin greedy fill — each round, assign one day to the person with fewest work days
+  const allPeople = [...state.staff].sort((a,b) => {
+    const ro = {manager:0,supervisor:1,employee:2};
+    return ro[a.role] - ro[b.role];
+  });
+  let changed = true;
+  let safetyCounter = 0;
+  while(changed && safetyCounter < 2000){
+    safetyCounter++;
+    changed = false;
+    // Sort by fewest work days first (for fairness), then by role priority
+    const sorted = [...allPeople].sort((a,b) => {
+      const wa = countWorkDays(a.id), wb = countWorkDays(b.id);
+      if(wa !== wb) return wa - wb;
+      const ro = {manager:0,supervisor:1,employee:2};
+      return ro[a.role] - ro[b.role];
+    });
+    for(const person of sorted){
+      const sid = person.id;
+      if(countWorkDays(sid) >= person.desiredDays) continue;
+      // Find best slot for this person
+      const options = [];
+      for(let d = 0; d < 28; d++){
+        if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+        const shifts = getAvailShifts(d);
+        for(const shift of shifts){
+          if(canAssignForAuto(sid, d, shift)){
+            const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
+            if(needed <= 0) continue;
+            const urgency = needed * 10 + getSlotDifficulty(d, shift, sid);
+            options.push({d, shift, urgency});
+          }
+        }
+      }
+      if(options.length === 0) continue;
+      options.sort((a,b) => b.urgency - a.urgency);
+      setAssignment(sid, options[0].d, options[0].shift);
+      changed = true;
+      break; // Back to re-sort so next person with fewest days goes
     }
   }
+
+  // Phase 3: Employee min 3 days per week
+  state.staff.filter(p => p.role === 'employee').forEach(person => {
+    const sid = person.id;
+    for(let w = 0; w < 4; w++){
+      let weekDays = 0;
+      for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+        if(isWorking(sid,d)) weekDays++;
+      }
+      let attempts = 0;
+      while(weekDays < 3 && attempts < 20){
+        attempts++;
+        let added = false;
+        for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+          if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+          for(const shift of getAvailShifts(d)){
+            if(canAssignForAuto(sid,d,shift)){
+              setAssignment(sid, d, shift);
+              weekDays++; added = true; break;
+            }
+          }
+          if(added) break;
+        }
+        if(!added) break;
+      }
+    }
+  });
+
+  // Phase 4: Balance check — if work day difference > 2 among same-role employees, try to even out
+  const roles = ['manager','supervisor','employee'];
+  for(const role of roles){
+    const people = state.staff.filter(s => s.role === role);
+    if(people.length < 2) continue;
+    for(let iter = 0; iter < 50; iter++){
+      const counts = people.map(p => ({id:p.id, days:countWorkDays(p.id), target:p.desiredDays}));
+      counts.sort((a,b) => a.days - b.days);
+      const minP = counts[0], maxP = counts[counts.length-1];
+      if(maxP.days - minP.days <= 2) break;
+      // Try to move a shift from maxP to minP
+      let swapped = false;
+      for(let d = 0; d < 28 && !swapped; d++){
+        if(!isWorking(maxP.id, d)) continue;
+        const shift = getAssignment(maxP.id, d);
+        if(isDayOff(minP.id, d) || isWorking(minP.id, d)) continue;
+        // Temporarily remove max's assignment, check if min can take it
+        clearAssignment(maxP.id, d);
+        if(canAssignForAuto(minP.id, d, shift)){
+          setAssignment(minP.id, d, shift);
+          // Mark max's day as unassigned (already cleared)
+          swapped = true;
+        } else {
+          // Restore
+          setAssignment(maxP.id, d, shift);
+        }
+      }
+      if(!swapped) break;
+    }
+  }
+  // Ensure each day has at least one manager/supervisor working
+  for(let d = 0; d < 28; d++){
+    let hasLeader = false;
+    state.staff.forEach(p => {
+      if((p.role === 'manager' || p.role === 'supervisor') && isWorking(p.id, d)) hasLeader = true;
+    });
+    if(!hasLeader){
+      // Try to assign a manager/supervisor to this day
+      const leaders = state.staff.filter(p => p.role === 'manager' || p.role === 'supervisor');
+      let placed = false;
+      for(const leader of leaders){
+        if(isDayOff(leader.id, d) || isWorking(leader.id, d)) continue;
+        const shifts = getAvailShifts(d);
+        for(const shift of shifts){
+          if(canAssignForAuto(leader.id, d, shift)){
+            setAssignment(leader.id, d, shift);
+            placed = true; break;
+          }
+        }
+        if(placed) break;
+      }
+      if(!placed){
+        // Try swapping: find an employee on this day and replace with a leader
+        for(const leader of leaders){
+          if(isDayOff(leader.id, d)) continue;
+          if(isWorking(leader.id, d)) continue;
+          // Find an employee working this day whose slot the leader can take
+          const employees = state.staff.filter(p => p.role === 'employee' && isWorking(p.id, d));
+          for(const emp of employees){
+            const empShift = getAssignment(emp.id, d);
+            // Temporarily remove employee, check if leader can take it
+            clearAssignment(emp.id, d);
+            if(canAssignForAuto(leader.id, d, empShift)){
+              setAssignment(leader.id, d, empShift);
+              placed = true; break;
+            } else {
+              // Restore
+              setAssignment(emp.id, d, empShift);
+            }
+          }
+          if(placed) break;
+        }
+      }
+    }
+  }
+
   // Fill remaining unassigned days with "休" for people who reached desiredDays
   state.staff.forEach(person => {
     const sid = person.id;
@@ -434,87 +594,7 @@ function runAutoSchedule(){
   saveState(); render();
 }
 
-function schedulePerson(person){
-  const sid = person.id;
-
-  // Target days
-  let target = person.desiredDays;
-
-  // 1. Place mandatory shifts for manager (早班 on Sun & Mon)
-  if(person.role === 'manager'){
-    for(let d = 0; d < 28; d++){
-      const dow = getDow(d);
-      if((dow === 0 || dow === 1) && !isDayOff(sid,d)){
-        if(!isWorking(sid,d) && canAssignForAuto(sid,d,'早')){
-          setAssignment(sid, d, '早');
-        }
-      }
-    }
-  }
-
-  // 2. Place rule6 shifts (晚班 on Mon)
-  if(person.rule6){
-    for(let d = 0; d < 28; d++){
-      if(getDow(d) === 1 && !isDayOff(sid,d) && !isWorking(sid,d)){
-        if(canAssignForAuto(sid,d,'晚')){
-          setAssignment(sid, d, '晚');
-        }
-      }
-    }
-  }
-
-  // 3. Fill remaining using greedy approach
-  let iterations = 0;
-  while(countWorkDays(sid) < target && iterations < 200){
-    iterations++;
-    const options = [];
-    for(let d = 0; d < 28; d++){
-      if(isDayOff(sid,d) || isWorking(sid,d)) continue;
-      const shifts = getAvailShifts(d);
-      for(const shift of shifts){
-        if(canAssignForAuto(sid, d, shift)){
-          // Score: prefer slots that need filling, then harder-to-fill slots
-          const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
-          if(needed <= 0) continue;
-          const urgency = needed * 10 + getSlotDifficulty(d, shift, sid);
-          options.push({d, shift, urgency});
-        }
-      }
-    }
-    if(options.length === 0) break;
-    options.sort((a,b) => b.urgency - a.urgency);
-    const best = options[0];
-    setAssignment(sid, best.d, best.shift);
-  }
-
-  // 4. For employees, check minimum 3 days per week
-  if(person.role === 'employee'){
-    for(let w = 0; w < 4; w++){
-      let weekDays = 0;
-      for(let d = w*7; d < (w+1)*7 && d < 28; d++){
-        if(isWorking(sid,d)) weekDays++;
-      }
-      let attempts = 0;
-      while(weekDays < 3 && attempts < 20){
-        attempts++;
-        let added = false;
-        for(let d = w*7; d < (w+1)*7 && d < 28; d++){
-          if(isDayOff(sid,d) || isWorking(sid,d)) continue;
-          for(const shift of getAvailShifts(d)){
-            if(canAssignForAuto(sid,d,shift)){
-              setAssignment(sid, d, shift);
-              weekDays++;
-              added = true;
-              break;
-            }
-          }
-          if(added) break;
-        }
-        if(!added) break;
-      }
-    }
-  }
-}
+// schedulePerson is no longer used — scheduling is now round-robin in runAutoSchedule
 
 function canAssignForAuto(sid, di, shift){
   // Same as canAssign but works during auto-schedule
@@ -525,14 +605,15 @@ function canAssignForAuto(sid, di, shift){
   if(getSlotCount(di, shift) >= req[shift]) return false;
   if(wouldExceedConsecutiveIfAdded(sid, di)) return false;
   // Night-morning check
-  if(shift === '早' && di > 0){
-    if(getAssignment(sid, di-1) === '晚' && !hasException(sid, di)) return false;
-  }
-  if(shift === '晚' && di < 27){
-    if(getAssignment(sid, di+1) === '早' && !hasException(sid, di+1)) return false;
-  }
-  // Rule 4
   const person = getStaffById(sid);
+  if(!person.allowNightToMorning){
+    if(shift === '早' && di > 0){
+      if(getAssignment(sid, di-1) === '晚' && !hasException(sid, di)) return false;
+    }
+    if(shift === '晚' && di < 27){
+      if(getAssignment(sid, di+1) === '早' && !hasException(sid, di+1)) return false;
+    }
+  }
   if(person.rule4 && isWeekend(di)){
     const wi = getWeekIndex(di);
     let otherFree = false;
@@ -592,7 +673,7 @@ function validate(){
     }
     // Check night-morning
     for(let d = 1; d < 28; d++){
-      if(getAssignment(sid,d) === '早' && getAssignment(sid,d-1) === '晚' && !hasException(sid,d)){
+      if(getAssignment(sid,d) === '早' && getAssignment(sid,d-1) === '晚' && !hasException(sid,d) && !person.allowNightToMorning){
         warnings.push({type:'error',msg:`${person.name}：第${d}天(${getDayLabel(d)})晚班後隔天排早班`});
       }
     }
@@ -646,6 +727,26 @@ function validate(){
       }
     }
   });
+
+  // Check: each day must have at least one manager or supervisor
+  for(let d = 0; d < 28; d++){
+    let hasLeader = false;
+    state.staff.forEach(p => {
+      if((p.role === 'manager' || p.role === 'supervisor') && isWorking(p.id, d)) hasLeader = true;
+    });
+    if(!hasLeader){
+      warnings.push({type:'error',msg:`${getDayLabel(d)}(${DOW_NAMES[getDow(d)]}) 沒有經理或主任上班`});
+    }
+  }
+
+  // Check: each day must have more than 1 person working
+  for(let d = 0; d < 28; d++){
+    let totalWorking = 0;
+    state.staff.forEach(p => { if(isWorking(p.id, d)) totalWorking++; });
+    if(totalWorking === 1){
+      warnings.push({type:'error',msg:`${getDayLabel(d)}(${DOW_NAMES[getDow(d)]}) 只有1人上班`});
+    }
+  }
 
   // Check daily staffing
   for(let d = 0; d < 28; d++){
@@ -702,6 +803,7 @@ function renderSidebar(){
           <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule4?'checked':''} onchange="updateStaff(${person.id},'rule4',this.checked)"> 六日必休一天</label>
           <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule5?'checked':''} onchange="updateStaff(${person.id},'rule5',this.checked)"> 至少休兩天週六或週日</label>
           <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule6?'checked':''} onchange="updateStaff(${person.id},'rule6',this.checked)"> 週一上晚班</label>
+          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.allowNightToMorning?'checked':''} onchange="updateStaff(${person.id},'allowNightToMorning',this.checked)"> 允許晚班接早班</label>
         </div>
         <div class="staff-stats">
           <span>已排 ${worked}/${targetDays} 天</span>
@@ -908,10 +1010,14 @@ function showCellMenu(x, y, sid, di){
     <span class="badge badge-休" style="margin-right:4px">休</span>${off?'取消預排假':'預排假'}${off?' ✓':''}
   </button>`;
 
-  // Exception toggle
-  html += `<button class="menu-item" onclick="menuToggleException(${sid},${di})">
-    <span style="color:var(--exception);margin-right:4px;font-weight:700">!</span>${exc?'取消例外':'設為例外（允許晚→早）'}${exc?' ✓':''}
-  </button>`;
+  // Exception toggle (only show if person-level allowNightToMorning is off)
+  if(!person.allowNightToMorning){
+    html += `<button class="menu-item" onclick="menuToggleException(${sid},${di})">
+      <span style="color:var(--exception);margin-right:4px;font-weight:700">!</span>${exc?'取消例外':'設為例外（允許晚→早）'}${exc?' ✓':''}
+    </button>`;
+  } else {
+    html += `<div style="padding:4px 12px;font-size:.7rem;color:var(--text2)">已全局允許晚班接早班</div>`;
+  }
 
   // Clear
   if(assign){
