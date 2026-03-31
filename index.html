@@ -175,6 +175,7 @@ function loadState(){
             if(st.maxDays === undefined) st.maxDays = st.desiredDays || 16;
           }
           if(st.rule7 === undefined) st.rule7 = false;
+          if(st.preferNight === undefined) st.preferNight = false;
           if(st.allowNightToMorning === undefined) st.allowNightToMorning = false;
           if(!st.weeklyOff) st.weeklyOff = [false,false,false,false,false,false,false];
         });
@@ -226,7 +227,7 @@ function addStaff(){
     id, name: `員工${id}`,
     role,
     desiredDays: 16,
-    rule4: false, rule5: false, rule6: false, rule7: false,
+    rule4: false, rule5: false, rule6: false, rule7: false, preferNight: false,
     allowNightToMorning: false,
     weeklyOff: [false,false,false,false,false,false,false] // 日一二三四五六
   };
@@ -467,6 +468,11 @@ function canAssign(sid, di, shift){
   if(person && person.rule7){
     const dow = getDow(di);
     if(dow >= 2 && dow <= 4 && shift !== '中') return false;
+  }
+  // Prefer night: if evening slot available, block other shifts
+  if(person && person.preferNight && shift !== '晚'){
+    const reqPN = getDayReq(di);
+    if(reqPN['晚'] && getSlotCount(di, '晚') < reqPN['晚']) return false;
   }
   return true;
 }
@@ -805,6 +811,11 @@ function canAssignForAuto(sid, di, shift){
     const dow = getDow(di);
     if(dow >= 2 && dow <= 4 && shift !== '中') return false;
   }
+  // Prefer night: if evening slot available, block other shifts
+  if(person.preferNight && shift !== '晚'){
+    const req = getDayReq(di);
+    if(req['晚'] && getSlotCount(di, '晚') < req['晚']) return false;
+  }
   return true;
 }
 
@@ -1033,6 +1044,7 @@ function renderSidebar(){
           <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule5?'checked':''} onchange="updateStaff(${person.id},'rule5',this.checked)"> 至少休兩天週六或週日</label>
           <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule6?'checked':''} onchange="updateStaff(${person.id},'rule6',this.checked)"> 週一上晚班</label>
           <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule7?'checked':''} onchange="updateStaff(${person.id},'rule7',this.checked)"> 週二到四只上午班</label>
+          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.preferNight?'checked':''} onchange="updateStaff(${person.id},'preferNight',this.checked)"> 優先晚班</label>
           <label onclick="event.stopPropagation()"><input type="checkbox" ${person.allowNightToMorning?'checked':''} onchange="updateStaff(${person.id},'allowNightToMorning',this.checked)"> 允許晚班接早班</label>
           <div style="margin-top:4px;font-size:.75rem;color:var(--text2)">
             固定休假：
