@@ -586,26 +586,55 @@ function runAutoSchedule(){
     }
   }
 
-  // Phase 3B: Force-fill leaders who didn't reach target — add extra slot (overfill) if no room
+  // Phase 3B: Force-fill leaders who didn't reach target
+  // Pass 1: try with all rules (canAssignForAuto), overfill slots if needed
+  // Pass 2: ignore slot limits + most rules, just fill
   for(const person of leaders){
     const sid = person.id;
-    let forceRetry = 0;
-    while(countWorkDays(sid) < person.desiredDays && forceRetry < 100){
-      forceRetry++;
+    // Pass 1: with rules, overfill OK
+    let retry1 = 0;
+    while(countWorkDays(sid) < person.desiredDays && retry1 < 100){
+      retry1++;
       let placed = false;
       const days = Array.from({length:28}, (_,i) => i).sort(() => Math.random() - 0.5);
       for(const d of days){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
         if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
         if(wouldExceedConsecutiveIfAdded(sid, d)) continue;
+        if(violatesNightMorning(sid, d, getAvailShifts(d)[0])) continue;
+        // Check rule4 (weekend rest)
+        if(person.rule4 && isWeekend(d)){
+          const wi = getWeekIndex(d);
+          let otherFree = false;
+          for(let dd = wi*7; dd < (wi+1)*7 && dd < 28; dd++){
+            if(dd !== d && isWeekend(dd) && !isWorking(sid,dd)) otherFree = true;
+          }
+          if(!otherFree) continue;
+        }
         const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
         for(const shift of shifts){
           if(violatesNightMorning(sid, d, shift)) continue;
-          // Just assign — even if slot is already full (overfill)
           setAssignment(sid, d, shift);
           placed = true; break;
         }
         if(placed) break;
+      }
+      if(!placed) break;
+    }
+    // Pass 2: ignore most rules, just fill any open day
+    let retry2 = 0;
+    while(countWorkDays(sid) < person.desiredDays && retry2 < 100){
+      retry2++;
+      let placed = false;
+      const days = Array.from({length:28}, (_,i) => i).sort(() => Math.random() - 0.5);
+      for(const d of days){
+        if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+        if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
+        const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
+        if(shifts.length > 0){
+          setAssignment(sid, d, shifts[0]);
+          placed = true; break;
+        }
       }
       if(!placed) break;
     }
