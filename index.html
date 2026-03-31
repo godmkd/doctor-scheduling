@@ -504,7 +504,7 @@ function runAutoSchedule(){
       }
       if(!placed) break;
     }
-    // Pass 2: fill open slots, still enforce hard rules (consecutive, night-morning, rule4)
+    // Pass 2: take employee's slot if no open slots — enforce hard rules
     let retry2 = 0;
     while(countWorkDays(sid) < person.desiredDays && retry2 < 200){
       retry2++;
@@ -514,7 +514,6 @@ function runAutoSchedule(){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
         if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
         if(wouldExceedConsecutiveIfAdded(sid, d)) continue;
-        // rule4: Sat-Sun no consecutive work
         if(person.rule4 && isWeekend(d)){
           const dow = getDow(d);
           if(dow === 6 && d+1 < 28 && isWorking(sid, d+1)) continue;
@@ -523,10 +522,19 @@ function runAutoSchedule(){
         const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
         for(const shift of shifts){
           if(violatesNightMorning(sid, d, shift)) continue;
+          // Try open slot first
           const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
-          if(needed <= 0) continue;
-          setAssignment(sid, d, shift);
-          placed = true; break;
+          if(needed > 0){
+            setAssignment(sid, d, shift);
+            placed = true; break;
+          }
+          // No open slot — take an employee's spot (they'll get re-filled in Phase 4)
+          const emp = state.staff.find(p => p.role === 'employee' && getAssignment(p.id, d) === shift);
+          if(emp){
+            clearAssignment(emp.id, d);
+            setAssignment(sid, d, shift);
+            placed = true; break;
+          }
         }
         if(placed) break;
       }
