@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>排班系統</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f1f5f9;--card:#fff;--border:#e2e8f0;--text:#1e293b;--text2:#64748b;
+  --primary:#3b82f6;--primary-light:#dbeafe;
+  --morning:#3b82f6;--afternoon:#10b981;--evening:#8b5cf6;
+  --off:#ef4444;--off-light:#fee2e2;--exception:#f59e0b;
+  --danger:#ef4444;--success:#10b981;
+  --shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);
+  --shadow-lg:0 4px 6px rgba(0,0,0,.1),0 2px 4px rgba(0,0,0,.06);
+  --radius:8px;
+}
+body{font-family:'Noto Sans TC',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+button{font-family:inherit;cursor:pointer;border:none;background:none;font-size:inherit}
+input,select{font-family:inherit;font-size:inherit}
+
+header{background:linear-gradient(135deg,#1e40af,#7c3aed);color:#fff;padding:16px 24px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;box-shadow:var(--shadow-lg)}
+header h1{font-size:1.4rem;font-weight:700;white-space:nowrap}
+.header-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.header-controls label{font-size:.85rem;display:flex;align-items:center;gap:6px}
+.header-controls input[type="date"]{padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;font-size:.85rem}
+.header-controls input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1)}
+.btn{padding:8px 16px;border-radius:6px;font-weight:500;font-size:.85rem;transition:all .15s}
+.btn-primary{background:#fff;color:#1e40af}.btn-primary:hover{background:#e0e7ff}
+.btn-danger{background:rgba(239,68,68,.2);color:#fecaca}.btn-danger:hover{background:rgba(239,68,68,.4)}
+.btn-success{background:rgba(16,185,129,.2);color:#a7f3d0}.btn-success:hover{background:rgba(16,185,129,.4)}
+.btn-sm{padding:4px 10px;font-size:.8rem}
+.btn-outline{border:1px solid var(--border);background:var(--card);color:var(--text)}.btn-outline:hover{background:var(--bg)}
+.btn-icon{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;font-size:1rem}
+
+.content{display:flex;gap:0;min-height:calc(100vh - 64px)}
+
+aside{width:340px;min-width:340px;background:var(--card);border-right:1px solid var(--border);overflow-y:auto;max-height:calc(100vh - 64px);padding:16px}
+aside h2{font-size:1rem;font-weight:700;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.staff-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:10px;transition:all .15s}
+.staff-card:hover{box-shadow:var(--shadow)}
+.staff-card.selected{border-color:var(--primary);background:var(--primary-light)}
+.staff-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.staff-header input[type="text"]{flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:.9rem;background:#fff}
+.staff-header select{padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:.8rem;background:#fff}
+.staff-header .btn-icon{color:var(--danger);font-size:.9rem}
+.staff-header .btn-icon:hover{background:var(--off-light)}
+.staff-options{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--text2)}
+.staff-options label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.staff-options input[type="checkbox"]{accent-color:var(--primary)}
+.staff-options .days-input{display:flex;align-items:center;gap:6px}
+.staff-options .days-input input{width:50px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;text-align:center}
+.staff-stats{font-size:.75rem;color:var(--text2);margin-top:6px;display:flex;gap:8px;flex-wrap:wrap}
+.staff-stats span{background:var(--card);padding:1px 6px;border-radius:3px}
+
+main{flex:1;overflow:auto;max-height:calc(100vh - 64px);padding:16px}
+.schedule-wrapper{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);box-shadow:var(--shadow)}
+table.schedule{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
+table.schedule th,table.schedule td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);padding:0;text-align:center;vertical-align:middle;white-space:nowrap}
+table.schedule th:last-child,table.schedule td:last-child{border-right:none}
+
+.col-name{position:sticky;left:0;z-index:2;background:var(--card);min-width:100px;max-width:140px;padding:4px 8px !important;text-align:left !important;font-size:.8rem;font-weight:500}
+.col-name.corner{z-index:4}
+thead th{position:sticky;top:0;z-index:3;background:#f8fafc;font-size:.7rem;font-weight:500}
+thead th.col-name{z-index:5;background:#f8fafc}
+.day-header{padding:4px 2px !important;min-width:68px;line-height:1.3}
+.day-header .dow{font-weight:700;font-size:.75rem}
+.day-header .date{font-size:.65rem;color:var(--text2)}
+.day-header .req{font-size:.6rem;color:var(--text2);margin-top:1px}
+.weekend{background:#fef3c7 !important}
+.role-row td,.role-row th{background:#e2e8f0 !important;font-size:.75rem;font-weight:700;padding:4px 8px !important;text-align:left !important;color:var(--text2)}
+
+.cell{min-width:68px;height:36px;cursor:pointer;position:relative;transition:background .1s}
+.cell:hover{background:#f0f4ff}
+.cell.day-off{background:var(--off-light) !important}
+.cell .badge{display:inline-block;padding:1px 8px;border-radius:4px;font-size:.7rem;font-weight:600;color:#fff}
+.badge-早{background:var(--morning)}.badge-中{background:var(--afternoon)}.badge-晚{background:var(--evening)}
+.badge-休{background:var(--off);font-size:.65rem}
+.cell .exception-mark{position:absolute;top:1px;right:2px;font-size:.55rem;color:var(--exception);font-weight:700}
+
+.stats-row td{background:#f8fafc !important;font-size:.7rem;font-weight:600;padding:4px 2px !important;color:var(--text2)}
+.stats-row .col-name{font-weight:700;color:var(--text)}
+.stat-ok{color:var(--success)}.stat-warn{color:var(--danger);font-weight:700}
+
+.summary-cols{display:flex;gap:16px;margin-top:16px;flex-wrap:wrap}
+.summary-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;box-shadow:var(--shadow);flex:1;min-width:260px}
+.summary-card h3{font-size:.85rem;font-weight:700;margin-bottom:8px;color:var(--text2)}
+.summary-card table{width:100%;font-size:.75rem;border-collapse:collapse}
+.summary-card td,.summary-card th{padding:3px 6px;border-bottom:1px solid var(--border);text-align:center}
+.summary-card th{background:#f8fafc;font-weight:600}
+
+.warnings{margin-top:16px}
+.warning-item{background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:.8rem;color:#92400e;display:flex;align-items:center;gap:8px}
+.warning-item::before{content:"⚠";font-size:1rem}
+.error-item{background:#fee2e2;border-color:#f87171;color:#991b1b}
+.error-item::before{content:"✕"}
+
+#cell-menu{position:fixed;z-index:100;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:4px;min-width:120px;display:none}
+#cell-menu.show{display:block}
+#cell-menu .menu-item{display:block;width:100%;text-align:left;padding:6px 12px;border-radius:4px;font-size:.8rem;font-weight:500;transition:background .1s}
+#cell-menu .menu-item:hover{background:var(--bg)}
+#cell-menu .menu-divider{height:1px;background:var(--border);margin:4px 0}
+
+.legend{display:flex;gap:12px;margin-bottom:12px;font-size:.75rem;align-items:center;flex-wrap:wrap;color:var(--text2)}
+.legend-item{display:flex;align-items:center;gap:4px}
+.legend-dot{width:12px;height:12px;border-radius:3px}
+
+@media(max-width:900px){
+  .content{flex-direction:column}
+  aside{width:100%;min-width:0;max-height:none;border-right:none;border-bottom:1px solid var(--border)}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>排班系統</h1>
+  <div class="header-controls">
+    <label>起始日期 <input type="date" id="start-date"></label>
+    <button class="btn btn-primary" onclick="runAutoSchedule()">自動排班</button>
+    <button class="btn btn-danger" onclick="clearAllAssignments()">清除排班</button>
+    <button class="btn btn-success" onclick="exportSchedule()">匯出</button>
+  </div>
+</header>
+<div class="content">
+  <aside id="sidebar"></aside>
+  <main id="main-area"></main>
+</div>
+<div id="cell-menu"></div>
+
+<script>
+// ===== CONSTANTS =====
+const SHIFTS = ['早','中','晚'];
+const SHIFT_COLORS = {'早':'morning','中':'afternoon','晚':'evening'};
+const ROLES = [{key:'manager',label:'經理'},{key:'supervisor',label:'主任'},{key:'employee',label:'員工'}];
+const ROLE_LABEL = {manager:'經理',supervisor:'主任',employee:'員工'};
+const DOW_NAMES = ['日','一','二','三','四','五','六'];
+const STORAGE_KEY = 'shift_scheduler_state';
+
+// ===== STATE =====
+let state = null;
+let selectedStaffId = null;
+let menuOpen = false;
+
+function getDefaultState(){
+  const today = new Date();
+  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  // Start next Monday
+  const day = d.getDay();
+  const diff = (day === 0 ? 1 : 8 - day);
+  d.setDate(d.getDate() + diff);
+  return {
+    startDate: fmt(d),
+    nextId: 1,
+    staff: [],
+    dayOffs: {},
+    assignments: {},
+    exceptions: {}
+  };
+}
+
+function fmt(d){ return d.toISOString().slice(0,10); }
+
+function loadState(){
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    if(s){ const p = JSON.parse(s); if(p && p.staff) return p; }
+  } catch(e){}
+  return null;
+}
+
+function saveState(){
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e){}
+}
+
+// ===== DATE UTILS =====
+function getStartDate(){ return new Date(state.startDate + 'T00:00:00'); }
+function getDayDate(di){
+  const d = getStartDate();
+  d.setDate(d.getDate() + di);
+  return d;
+}
+function getDow(di){ return getDayDate(di).getDay(); }
+function getDayLabel(di){
+  const d = getDayDate(di);
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+function getWeekIndex(di){ return Math.floor(di/7); }
+
+function getDayReq(di){
+  const dow = getDow(di);
+  // Tue(2)-Thu(4): 早1,中1,晚1  Fri(5)-Mon(1): 早2,晚2
+  if(dow >= 2 && dow <= 4) return {'早':1,'中':1,'晚':1};
+  return {'早':2,'中':0,'晚':2};
+}
+
+function getAvailShifts(di){
+  const req = getDayReq(di);
+  return SHIFTS.filter(s => req[s] > 0);
+}
+
+function isWeekend(di){ const dow = getDow(di); return dow === 0 || dow === 6; }
+
+// ===== STAFF =====
+function addStaff(){
+  const hasManager = state.staff.some(s => s.role === 'manager');
+  const id = state.nextId++;
+  state.staff.push({
+    id, name: `員工${id}`,
+    role: hasManager ? 'employee' : 'manager',
+    desiredDays: 16,
+    rule4: false, rule5: false, rule6: false
+  });
+  state.dayOffs[id] = [];
+  state.assignments[id] = {};
+  state.exceptions[id] = [];
+  saveState(); render();
+}
+
+function removeStaff(id){
+  state.staff = state.staff.filter(s => s.id !== id);
+  delete state.dayOffs[id];
+  delete state.assignments[id];
+  delete state.exceptions[id];
+  if(selectedStaffId === id) selectedStaffId = null;
+  saveState(); render();
+}
+
+function updateStaff(id, field, value){
+  const s = state.staff.find(x => x.id === id);
+  if(!s) return;
+  if(field === 'role' && value === 'manager'){
+    // Only one manager
+    state.staff.forEach(x => { if(x.role === 'manager') x.role = 'supervisor'; });
+  }
+  if(field === 'desiredDays') value = Math.max(0, Math.min(28, parseInt(value)||0));
+  s[field] = value;
+  if(field === 'desiredDays'){
+    const hasAssignments = state.assignments[id] && Object.keys(state.assignments[id]).length > 0;
+    if(hasAssignments){
+      if(confirm('已有排班資料，是否要重新自動排班？')){
+        saveState();
+        runAutoSchedule();
+        return;
+      }
+    }
+  }
+  saveState(); render();
+}
+
+function getStaffById(id){ return state.staff.find(s => s.id === id); }
+function getStaffByRole(role){ return state.staff.filter(s => s.role === role); }
+
+// ===== SCHEDULE DATA =====
+function getAssignment(sid, di){
+  return (state.assignments[sid] && state.assignments[sid][di]) || null;
+}
+function setAssignment(sid, di, shift){
+  if(!state.assignments[sid]) state.assignments[sid] = {};
+  state.assignments[sid][di] = shift;
+}
+function clearAssignment(sid, di){
+  if(state.assignments[sid]) delete state.assignments[sid][di];
+}
+function isDayOff(sid, di){
+  return (state.dayOffs[sid] || []).includes(di);
+}
+function toggleDayOff(sid, di){
+  if(!state.dayOffs[sid]) state.dayOffs[sid] = [];
+  const idx = state.dayOffs[sid].indexOf(di);
+  if(idx >= 0){ state.dayOffs[sid].splice(idx,1); }
+  else { state.dayOffs[sid].push(di); clearAssignment(sid, di); }
+}
+function hasException(sid, di){
+  return (state.exceptions[sid] || []).includes(di);
+}
+function toggleException(sid, di){
+  if(!state.exceptions[sid]) state.exceptions[sid] = [];
+  const idx = state.exceptions[sid].indexOf(di);
+  if(idx >= 0) state.exceptions[sid].splice(idx,1);
+  else state.exceptions[sid].push(di);
+}
+
+function getSlotCount(di, shift){
+  let count = 0;
+  state.staff.forEach(s => {
+    if(getAssignment(s.id, di) === shift) count++;
+  });
+  return count;
+}
+
+function slotAvailable(di, shift){
+  const req = getDayReq(di);
+  if(!req[shift]) return false;
+  return getSlotCount(di, shift) < req[shift];
+}
+
+// ===== CONSTRAINTS =====
+function wouldExceedConsecutive(sid, di){
+  let run = 1;
+  for(let d = di - 1; d >= 0; d--){
+    if(isWorking(sid, d)) run++; else break;
+  }
+  for(let d = di + 1; d < 28; d++){
+    if(isWorking(sid, d)) run++; else break;
+  }
+  return run > 6;
+}
+
+function isWorking(sid, di){
+  const a = getAssignment(sid, di);
+  return !!a && a !== '休';
+}
+
+function wouldExceedConsecutiveIfAdded(sid, di){
+  // Temporarily check
+  let runBefore = 0;
+  for(let d = di - 1; d >= 0; d--){
+    if(isWorking(sid, d) || isDayOff(sid, d) === false && false) { /* nope */ }
+    if(isWorking(sid, d)) runBefore++; else break;
+  }
+  let runAfter = 0;
+  for(let d = di + 1; d < 28; d++){
+    if(isWorking(sid, d)) runAfter++; else break;
+  }
+  return (runBefore + 1 + runAfter) > 6;
+}
+
+function violatesNightMorning(sid, di, shift){
+  if(shift === '早' && di > 0){
+    if(getAssignment(sid, di-1) === '晚' && !hasException(sid, di)) return true;
+  }
+  if(shift === '晚' && di < 27){
+    if(getAssignment(sid, di+1) === '早' && !hasException(sid, di+1)) return true;
+  }
+  return false;
+}
+
+function checkRule4(sid, di){
+  // If person has rule4: in the week containing di, at least one Sat/Sun must be off
+  const person = getStaffById(sid);
+  if(!person || !person.rule4) return true;
+  const wi = getWeekIndex(di);
+  const weekStart = wi * 7;
+  let hasWeekend = false;
+  let hasFreeWeekend = false;
+  for(let d = weekStart; d < weekStart + 7 && d < 28; d++){
+    if(isWeekend(d)){
+      hasWeekend = true;
+      if(!isWorking(sid, d)) hasFreeWeekend = true;
+    }
+  }
+  if(!hasWeekend) return true;
+  return hasFreeWeekend;
+}
+
+function checkRule5(sid){
+  // Must have at least 2 Sat/Sun off in 28 days
+  const person = getStaffById(sid);
+  if(!person || !person.rule5) return true;
+  let count = 0;
+  for(let d = 0; d < 28; d++){
+    if(isWeekend(d) && !isWorking(sid, d)) count++;
+  }
+  return count >= 2;
+}
+
+function countFreeWeekendDays(sid){
+  let count = 0;
+  for(let d = 0; d < 28; d++){
+    if(isWeekend(d) && !isWorking(sid, d)) count++;
+  }
+  return count;
+}
+
+function canAssign(sid, di, shift){
+  if(isDayOff(sid, di)) return false;
+  if(isWorking(sid, di)) return false;
+  const req = getDayReq(di);
+  if(!req[shift] || req[shift] === 0) return false;
+  if(!slotAvailable(di, shift)) return false;
+  if(wouldExceedConsecutiveIfAdded(sid, di)) return false;
+  if(violatesNightMorning(sid, di, shift)) return false;
+  // Rule 4 check
+  const person = getStaffById(sid);
+  if(person && person.rule4 && isWeekend(di)){
+    // Check if all other weekend days in this week are already working
+    const wi = getWeekIndex(di);
+    const weekStart = wi * 7;
+    let otherWeekendFree = false;
+    for(let d = weekStart; d < weekStart+7 && d<28; d++){
+      if(d !== di && isWeekend(d) && !isWorking(sid,d) && !isDayOff(sid,d)){
+        // Wait, day off counts as "free" for rule 4 purposes? Yes - day off = not working
+      }
+      if(d !== di && isWeekend(d) && !isWorking(sid,d)){
+        otherWeekendFree = true;
+      }
+    }
+    if(!otherWeekendFree) return false;
+  }
+  // Rule 5 check
+  if(person && person.rule5 && isWeekend(di)){
+    if(countFreeWeekendDays(sid) <= 2) return false;
+  }
+  return true;
+}
+
+// ===== AUTO SCHEDULE =====
+function runAutoSchedule(){
+  // Clear all non-manual (clear all for simplicity)
+  state.staff.forEach(s => { state.assignments[s.id] = {}; });
+
+  const roleOrder = ['manager','supervisor','employee'];
+  for(const role of roleOrder){
+    const people = state.staff.filter(s => s.role === role);
+    // Sort by fewer options first (more constrained)
+    for(const person of people){
+      schedulePerson(person);
+    }
+  }
+  // Fill remaining unassigned days with "休" for people who reached desiredDays
+  state.staff.forEach(person => {
+    const sid = person.id;
+    if(countWorkDays(sid) >= person.desiredDays){
+      for(let d = 0; d < 28; d++){
+        if(!isWorking(sid, d) && !isDayOff(sid, d) && !getAssignment(sid, d)){
+          setAssignment(sid, d, '休');
+        }
+      }
+    }
+  });
+
+  saveState(); render();
+}
+
+function schedulePerson(person){
+  const sid = person.id;
+
+  // Target days
+  let target = person.desiredDays;
+
+  // 1. Place mandatory shifts for manager (早班 on Sun & Mon)
+  if(person.role === 'manager'){
+    for(let d = 0; d < 28; d++){
+      const dow = getDow(d);
+      if((dow === 0 || dow === 1) && !isDayOff(sid,d)){
+        if(!isWorking(sid,d) && canAssignForAuto(sid,d,'早')){
+          setAssignment(sid, d, '早');
+        }
+      }
+    }
+  }
+
+  // 2. Place rule6 shifts (晚班 on Mon)
+  if(person.rule6){
+    for(let d = 0; d < 28; d++){
+      if(getDow(d) === 1 && !isDayOff(sid,d) && !isWorking(sid,d)){
+        if(canAssignForAuto(sid,d,'晚')){
+          setAssignment(sid, d, '晚');
+        }
+      }
+    }
+  }
+
+  // 3. Fill remaining using greedy approach
+  let iterations = 0;
+  while(countWorkDays(sid) < target && iterations < 200){
+    iterations++;
+    const options = [];
+    for(let d = 0; d < 28; d++){
+      if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+      const shifts = getAvailShifts(d);
+      for(const shift of shifts){
+        if(canAssignForAuto(sid, d, shift)){
+          // Score: prefer slots that need filling, then harder-to-fill slots
+          const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
+          if(needed <= 0) continue;
+          const urgency = needed * 10 + getSlotDifficulty(d, shift, sid);
+          options.push({d, shift, urgency});
+        }
+      }
+    }
+    if(options.length === 0) break;
+    options.sort((a,b) => b.urgency - a.urgency);
+    const best = options[0];
+    setAssignment(sid, best.d, best.shift);
+  }
+
+  // 4. For employees, check minimum 3 days per week
+  if(person.role === 'employee'){
+    for(let w = 0; w < 4; w++){
+      let weekDays = 0;
+      for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+        if(isWorking(sid,d)) weekDays++;
+      }
+      let attempts = 0;
+      while(weekDays < 3 && attempts < 20){
+        attempts++;
+        let added = false;
+        for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+          if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+          for(const shift of getAvailShifts(d)){
+            if(canAssignForAuto(sid,d,shift)){
+              setAssignment(sid, d, shift);
+              weekDays++;
+              added = true;
+              break;
+            }
+          }
+          if(added) break;
+        }
+        if(!added) break;
+      }
+    }
+  }
+}
+
+function canAssignForAuto(sid, di, shift){
+  // Same as canAssign but works during auto-schedule
+  if(isDayOff(sid, di)) return false;
+  if(isWorking(sid, di)) return false;
+  const req = getDayReq(di);
+  if(!req[shift] || req[shift] === 0) return false;
+  if(getSlotCount(di, shift) >= req[shift]) return false;
+  if(wouldExceedConsecutiveIfAdded(sid, di)) return false;
+  // Night-morning check
+  if(shift === '早' && di > 0){
+    if(getAssignment(sid, di-1) === '晚' && !hasException(sid, di)) return false;
+  }
+  if(shift === '晚' && di < 27){
+    if(getAssignment(sid, di+1) === '早' && !hasException(sid, di+1)) return false;
+  }
+  // Rule 4
+  const person = getStaffById(sid);
+  if(person.rule4 && isWeekend(di)){
+    const wi = getWeekIndex(di);
+    let otherFree = false;
+    for(let d = wi*7; d < (wi+1)*7 && d < 28; d++){
+      if(d !== di && isWeekend(d) && !isWorking(sid,d) && !isDayOff(sid,d)){
+        otherFree = true; break;
+      }
+    }
+    if(!otherFree) return false;
+  }
+  // Rule 5
+  if(person.rule5 && isWeekend(di)){
+    if(countFreeWeekendDays(sid) <= 2) return false;
+  }
+  // Rule 6: force Monday evening shift
+  if(person.rule6 && getDow(di) === 1 && shift !== '晚' && slotAvailable(di, '晚')){
+    return false;
+  }
+  return true;
+}
+
+function getSlotDifficulty(di, shift, excludeSid){
+  // How many other people could fill this slot? Fewer = harder = higher priority
+  let count = 0;
+  state.staff.forEach(s => {
+    if(s.id === excludeSid) return;
+    if(!isWorking(s.id, di) && !isDayOff(s.id, di)){
+      // Rough check
+      count++;
+    }
+  });
+  return Math.max(0, 10 - count);
+}
+
+function countWorkDays(sid){
+  let c = 0;
+  for(let d = 0; d < 28; d++) if(isWorking(sid,d)) c++;
+  return c;
+}
+
+function clearAllAssignments(){
+  if(!confirm('確定要清除所有排班資料嗎？')) return;
+  state.staff.forEach(s => { state.assignments[s.id] = {}; });
+  saveState(); render();
+}
+
+// ===== VALIDATION =====
+function validate(){
+  const warnings = [];
+  state.staff.forEach(person => {
+    const sid = person.id;
+    // Check consecutive days
+    let run = 0;
+    for(let d = 0; d < 28; d++){
+      if(isWorking(sid,d)){ run++; if(run > 6) warnings.push({type:'error',msg:`${person.name}：第${d-5}~${d+1}天連續工作超過6天`}); }
+      else run = 0;
+    }
+    // Check night-morning
+    for(let d = 1; d < 28; d++){
+      if(getAssignment(sid,d) === '早' && getAssignment(sid,d-1) === '晚' && !hasException(sid,d)){
+        warnings.push({type:'error',msg:`${person.name}：第${d}天(${getDayLabel(d)})晚班後隔天排早班`});
+      }
+    }
+    // Manager Sunday/Monday morning
+    if(person.role === 'manager'){
+      for(let d = 0; d < 28; d++){
+        const dow = getDow(d);
+        if((dow === 0 || dow === 1) && !isDayOff(sid,d) && getAssignment(sid,d) !== '早'){
+          if(isWorking(sid,d)){
+            warnings.push({type:'warn',msg:`${person.name}(經理)：${getDayLabel(d)}(${DOW_NAMES[dow]}) 應排早班`});
+          }
+        }
+      }
+    }
+    // Rule 4: weekend rest
+    if(person.rule4){
+      for(let w = 0; w < 4; w++){
+        let weekendFree = false;
+        for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+          if(isWeekend(d) && !isWorking(sid,d)) weekendFree = true;
+        }
+        let hasWeekend = false;
+        for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+          if(isWeekend(d)) hasWeekend = true;
+        }
+        if(hasWeekend && !weekendFree){
+          warnings.push({type:'warn',msg:`${person.name}：第${w+1}週六日皆有排班（違反六日必休一天）`});
+        }
+      }
+    }
+    // Rule 5
+    if(person.rule5){
+      if(countFreeWeekendDays(sid) < 2){
+        warnings.push({type:'warn',msg:`${person.name}：28天內週六日休息不足2天`});
+      }
+    }
+    // Check work days exceed desired days
+    if(countWorkDays(sid) > person.desiredDays){
+      warnings.push({type:'error',msg:`${person.name}：上班天數(${countWorkDays(sid)})超過目標天數(${person.desiredDays})`});
+    }
+    // Employee min 3 days per week
+    if(person.role === 'employee'){
+      for(let w = 0; w < 4; w++){
+        let wd = 0;
+        for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+          if(isWorking(sid,d)) wd++;
+        }
+        if(wd > 0 && wd < 3){
+          warnings.push({type:'warn',msg:`${person.name}：第${w+1}週僅排${wd}天（至少需3天）`});
+        }
+      }
+    }
+  });
+
+  // Check daily staffing
+  for(let d = 0; d < 28; d++){
+    const req = getDayReq(d);
+    for(const shift of SHIFTS){
+      if(req[shift] > 0){
+        const count = getSlotCount(d, shift);
+        if(count < req[shift]){
+          warnings.push({type:'warn',msg:`${getDayLabel(d)}(${DOW_NAMES[getDow(d)]}) ${shift}班：需${req[shift]}人，僅${count}人`});
+        }
+      }
+    }
+  }
+  return warnings;
+}
+
+// ===== RENDERING =====
+function render(){
+  renderSidebar();
+  renderMain();
+}
+
+function renderSidebar(){
+  const el = document.getElementById('sidebar');
+  let html = `<h2>員工管理 <button class="btn btn-outline btn-sm" onclick="addStaff()">+ 新增</button></h2>`;
+
+  const roleOrder = ['manager','supervisor','employee'];
+  for(const role of roleOrder){
+    const people = state.staff.filter(s => s.role === role);
+    if(people.length === 0 && role !== 'manager') continue;
+    people.forEach(person => {
+      const sel = selectedStaffId === person.id ? 'selected' : '';
+      const targetDays = person.desiredDays;
+      const worked = countWorkDays(person.id);
+      let shiftCounts = {早:0,中:0,晚:0};
+      for(let d=0;d<28;d++){
+        const a = getAssignment(person.id,d);
+        if(a) shiftCounts[a]++;
+      }
+
+      html += `<div class="staff-card ${sel}" onclick="selectStaff(${person.id})">
+        <div class="staff-header">
+          <input type="text" value="${esc(person.name)}" onchange="updateStaff(${person.id},'name',this.value)" onclick="event.stopPropagation()">
+          <select onchange="updateStaff(${person.id},'role',this.value)" onclick="event.stopPropagation()">
+            ${ROLES.map(r => `<option value="${r.key}" ${person.role===r.key?'selected':''}>${r.label}</option>`).join('')}
+          </select>
+          <button class="btn-icon" onclick="event.stopPropagation();removeStaff(${person.id})" title="刪除">✕</button>
+        </div>
+        <div class="staff-options">
+          <div class="days-input">
+            <span>目標天數：</span>
+            <input type="number" min="0" max="28" value="${person.desiredDays}" onchange="updateStaff(${person.id},'desiredDays',this.value)" onclick="event.stopPropagation()">
+          </div>
+          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule4?'checked':''} onchange="updateStaff(${person.id},'rule4',this.checked)"> 六日必休一天</label>
+          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule5?'checked':''} onchange="updateStaff(${person.id},'rule5',this.checked)"> 至少休兩天週六或週日</label>
+          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule6?'checked':''} onchange="updateStaff(${person.id},'rule6',this.checked)"> 週一上晚班</label>
+        </div>
+        <div class="staff-stats">
+          <span>已排 ${worked}/${targetDays} 天</span>
+          <span style="color:var(--morning)">早${shiftCounts['早']}</span>
+          <span style="color:var(--afternoon)">中${shiftCounts['中']}</span>
+          <span style="color:var(--evening)">晚${shiftCounts['晚']}</span>
+          <span style="color:var(--off)">休${(state.dayOffs[person.id]||[]).length}</span>
+        </div>
+      </div>`;
+    });
+  }
+  el.innerHTML = html;
+}
+
+function renderMain(){
+  const el = document.getElementById('main-area');
+  let html = '';
+
+  // Legend
+  html += `<div class="legend">
+    <span style="font-weight:600">圖例：</span>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--morning)"></div>早班</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--afternoon)"></div>中班</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--evening)"></div>晚班</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--off)"></div>預排假</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--exception)"></div>例外(晚→早)</div>
+    <span style="margin-left:8px;font-size:.7rem;color:var(--text2)">點擊儲存格可編輯</span>
+  </div>`;
+
+  // Schedule table
+  html += `<div class="schedule-wrapper"><table class="schedule">`;
+
+  // Header row
+  html += `<thead><tr><th class="col-name corner">姓名</th>`;
+  for(let d = 0; d < 28; d++){
+    const dow = getDow(d);
+    const we = isWeekend(d) ? ' weekend' : '';
+    const req = getDayReq(d);
+    const reqStr = SHIFTS.filter(s => req[s]>0).map(s => `${s}${req[s]}`).join(' ');
+    const weekBorder = (d > 0 && d % 7 === 0) ? 'border-left:2px solid #94a3b8;' : '';
+    html += `<th class="day-header${we}" style="${weekBorder}">
+      <div class="dow">${DOW_NAMES[dow]}</div>
+      <div class="date">${getDayLabel(d)}</div>
+      <div class="req">${reqStr}</div>
+    </th>`;
+  }
+  html += `<th class="day-header" style="min-width:50px">合計</th></tr></thead><tbody>`;
+
+  // Staff rows grouped by role
+  const roleOrder = ['manager','supervisor','employee'];
+  for(const role of roleOrder){
+    const people = state.staff.filter(s => s.role === role);
+    if(people.length === 0) continue;
+    html += `<tr class="role-row"><td class="col-name" colspan="${30}">${ROLE_LABEL[role]}（${people.length}人）</td></tr>`;
+    for(const person of people){
+      const sid = person.id;
+      const sel = selectedStaffId === sid ? ' style="background:#eff6ff"' : '';
+      html += `<tr${sel}>`;
+      html += `<td class="col-name" style="${selectedStaffId===sid?'background:#eff6ff;font-weight:700':''}">${esc(person.name)}</td>`;
+      for(let d = 0; d < 28; d++){
+        const off = isDayOff(sid, d);
+        const assign = getAssignment(sid, d);
+        const exc = hasException(sid, d);
+        const we = isWeekend(d) ? ' weekend' : '';
+        const offCls = off ? ' day-off' : '';
+        const weekBorder = (d > 0 && d % 7 === 0) ? 'border-left:2px solid #94a3b8;' : '';
+        let content = '';
+        if(off){
+          content = '<span class="badge badge-休">休</span>';
+        } else if(assign){
+          content = `<span class="badge badge-${assign}">${assign}</span>`;
+        }
+        if(exc) content += '<span class="exception-mark" title="例外：允許晚班後排早班">!</span>';
+        html += `<td class="cell${we}${offCls}" style="${weekBorder}" data-sid="${sid}" data-day="${d}" onclick="onCellClick(event,${sid},${d})">${content}</td>`;
+      }
+      // Total
+      const total = countWorkDays(sid);
+      html += `<td class="cell" style="font-size:.75rem;font-weight:600;cursor:default">${total}</td>`;
+      html += `</tr>`;
+    }
+  }
+
+  // Daily totals row
+  html += `<tr class="stats-row"><td class="col-name">每日人數</td>`;
+  for(let d = 0; d < 28; d++){
+    const req = getDayReq(d);
+    let totalReq = 0, totalFilled = 0;
+    SHIFTS.forEach(s => { totalReq += req[s]; totalFilled += getSlotCount(d,s); });
+    const cls = totalFilled >= totalReq ? 'stat-ok' : 'stat-warn';
+    const weekBorder = (d > 0 && d % 7 === 0) ? 'border-left:2px solid #94a3b8;' : '';
+    html += `<td class="${cls}" style="font-size:.7rem;padding:4px 2px;${weekBorder}">${totalFilled}/${totalReq}</td>`;
+  }
+  html += `<td></td></tr>`;
+
+  // Per-shift breakdown row
+  for(const shift of SHIFTS){
+    html += `<tr class="stats-row"><td class="col-name" style="padding-left:16px !important">${shift}班</td>`;
+    for(let d = 0; d < 28; d++){
+      const req = getDayReq(d);
+      const count = getSlotCount(d, shift);
+      const needed = req[shift] || 0;
+      const weekBorder = (d > 0 && d % 7 === 0) ? 'border-left:2px solid #94a3b8;' : '';
+      if(needed === 0){
+        html += `<td style="font-size:.65rem;color:#cbd5e1;padding:2px;${weekBorder}">-</td>`;
+      } else {
+        const cls = count >= needed ? 'stat-ok' : 'stat-warn';
+        html += `<td class="${cls}" style="font-size:.7rem;padding:2px;${weekBorder}">${count}/${needed}</td>`;
+      }
+    }
+    html += `<td></td></tr>`;
+  }
+
+  html += `</tbody></table></div>`;
+
+  // Summary cards
+  html += `<div class="summary-cols">`;
+
+  // Per-person summary
+  html += `<div class="summary-card"><h3>個人統計</h3><table>
+    <tr><th>姓名</th><th>角色</th><th>目標</th><th>已排</th><th>早</th><th>中</th><th>晚</th><th>休</th></tr>`;
+  state.staff.forEach(p => {
+    const target = p.desiredDays;
+    const worked = countWorkDays(p.id);
+    let sc = {早:0,中:0,晚:0};
+    for(let d=0;d<28;d++){ const a=getAssignment(p.id,d); if(a)sc[a]++; }
+    const offCount = (state.dayOffs[p.id]||[]).length;
+    const cls = worked < target ? 'stat-warn' : '';
+    html += `<tr><td style="text-align:left">${esc(p.name)}</td><td>${ROLE_LABEL[p.role]}</td>
+      <td>${target}</td><td class="${cls}">${worked}</td>
+      <td style="color:var(--morning)">${sc['早']}</td><td style="color:var(--afternoon)">${sc['中']}</td>
+      <td style="color:var(--evening)">${sc['晚']}</td><td style="color:var(--off)">${offCount}</td></tr>`;
+  });
+  html += `</table></div>`;
+
+  // Daily coverage
+  html += `<div class="summary-card"><h3>每日班次覆蓋</h3><div style="max-height:200px;overflow-y:auto"><table>
+    <tr><th>日期</th><th>星期</th><th>早班</th><th>中班</th><th>晚班</th><th>狀態</th></tr>`;
+  for(let d = 0; d < 28; d++){
+    const req = getDayReq(d);
+    const dow = getDow(d);
+    let ok = true;
+    let cells = '';
+    SHIFTS.forEach(s => {
+      const n = req[s]||0;
+      const c = getSlotCount(d,s);
+      if(n === 0){ cells += '<td style="color:#cbd5e1">-</td>'; }
+      else {
+        const cls = c >= n ? 'stat-ok' : 'stat-warn';
+        if(c < n) ok = false;
+        cells += `<td class="${cls}">${c}/${n}</td>`;
+      }
+    });
+    html += `<tr><td>${getDayLabel(d)}</td><td>${DOW_NAMES[dow]}</td>${cells}<td>${ok?'✓':'✕'}</td></tr>`;
+  }
+  html += `</table></div></div>`;
+  html += `</div>`;
+
+  // Warnings
+  const warnings = validate();
+  if(warnings.length > 0){
+    html += `<div class="warnings"><h3 style="font-size:.9rem;margin-bottom:8px">驗證警告（${warnings.length}）</h3>`;
+    warnings.forEach(w => {
+      html += `<div class="${w.type==='error'?'error-item':'warning-item'}">${esc(w.msg)}</div>`;
+    });
+    html += `</div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ===== CELL MENU =====
+function onCellClick(e, sid, di){
+  e.stopPropagation();
+  showCellMenu(e.clientX, e.clientY, sid, di);
+}
+
+function showCellMenu(x, y, sid, di){
+  const menu = document.getElementById('cell-menu');
+  const person = getStaffById(sid);
+  if(!person) return;
+
+  const off = isDayOff(sid, di);
+  const assign = getAssignment(sid, di);
+  const exc = hasException(sid, di);
+  const avail = getAvailShifts(di);
+
+  let html = `<div style="padding:4px 8px;font-size:.7rem;color:var(--text2);border-bottom:1px solid var(--border);margin-bottom:2px">${person.name} - ${getDayLabel(di)}(${DOW_NAMES[getDow(di)]})</div>`;
+
+  // Shift options
+  avail.forEach(shift => {
+    const isCurrent = assign === shift;
+    const highlight = isCurrent ? 'font-weight:700;' : '';
+    html += `<button class="menu-item" style="${highlight}" onclick="menuSetShift(${sid},${di},'${shift}')">
+      <span class="badge badge-${shift}" style="margin-right:4px">${shift}</span>${shift === '早'?'早班':shift === '中'?'中班':'晚班'}${isCurrent?' ✓':''}
+    </button>`;
+  });
+
+  html += `<div class="menu-divider"></div>`;
+
+  // Day off toggle
+  html += `<button class="menu-item" onclick="menuToggleOff(${sid},${di})">
+    <span class="badge badge-休" style="margin-right:4px">休</span>${off?'取消預排假':'預排假'}${off?' ✓':''}
+  </button>`;
+
+  // Exception toggle
+  html += `<button class="menu-item" onclick="menuToggleException(${sid},${di})">
+    <span style="color:var(--exception);margin-right:4px;font-weight:700">!</span>${exc?'取消例外':'設為例外（允許晚→早）'}${exc?' ✓':''}
+  </button>`;
+
+  // Clear
+  if(assign){
+    html += `<div class="menu-divider"></div>`;
+    html += `<button class="menu-item" style="color:var(--danger)" onclick="menuClear(${sid},${di})">清除排班</button>`;
+  }
+
+  menu.innerHTML = html;
+  menu.classList.add('show');
+
+  // Position
+  const mw = 200, mh = menu.offsetHeight || 250;
+  let left = x, top = y;
+  if(left + mw > window.innerWidth) left = window.innerWidth - mw - 10;
+  if(top + mh > window.innerHeight) top = window.innerHeight - mh - 10;
+  if(left < 0) left = 10;
+  if(top < 0) top = 10;
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+  menuOpen = true;
+}
+
+function hideCellMenu(){
+  document.getElementById('cell-menu').classList.remove('show');
+  menuOpen = false;
+}
+
+function menuSetShift(sid, di, shift){
+  if(isDayOff(sid, di)){
+    toggleDayOff(sid, di); // Remove day off first
+  }
+  // Check if already has this shift → toggle off
+  if(getAssignment(sid, di) === shift){
+    clearAssignment(sid, di);
+  } else {
+    // Clear any existing assignment for this person on this day
+    clearAssignment(sid, di);
+    setAssignment(sid, di, shift);
+  }
+  hideCellMenu();
+  saveState(); render();
+}
+
+function menuToggleOff(sid, di){
+  toggleDayOff(sid, di);
+  hideCellMenu();
+  saveState(); render();
+}
+
+function menuToggleException(sid, di){
+  toggleException(sid, di);
+  hideCellMenu();
+  saveState(); render();
+}
+
+function menuClear(sid, di){
+  clearAssignment(sid, di);
+  hideCellMenu();
+  saveState(); render();
+}
+
+function selectStaff(id){
+  selectedStaffId = selectedStaffId === id ? null : id;
+  render();
+}
+
+// ===== EXPORT =====
+function exportSchedule(){
+  let text = '排班表\n';
+  text += `起始日期: ${state.startDate}\n\n`;
+
+  // Header
+  text += '姓名\t角色\t';
+  for(let d = 0; d < 28; d++){
+    text += `${getDayLabel(d)}(${DOW_NAMES[getDow(d)]})\t`;
+  }
+  text += '合計\n';
+
+  state.staff.forEach(p => {
+    text += `${p.name}\t${ROLE_LABEL[p.role]}\t`;
+    let total = 0;
+    for(let d = 0; d < 28; d++){
+      if(isDayOff(p.id, d)){
+        text += '休\t';
+      } else {
+        const a = getAssignment(p.id, d);
+        text += (a || '') + '\t';
+        if(a) total++;
+      }
+    }
+    text += total + '\n';
+  });
+
+  const blob = new Blob(['\uFEFF' + text], {type:'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `排班表_${state.startDate}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ===== INIT =====
+function init(){
+  state = loadState() || getDefaultState();
+  document.getElementById('start-date').value = state.startDate;
+  document.getElementById('start-date').addEventListener('change', function(){
+    state.startDate = this.value;
+    saveState(); render();
+  });
+
+  document.addEventListener('click', function(e){
+    if(menuOpen && !e.target.closest('#cell-menu')){
+      hideCellMenu();
+    }
+  });
+
+  render();
+}
+
+init();
+</script>
+</body>
+</html>
