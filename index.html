@@ -429,13 +429,7 @@ function runAutoSchedule(){
         }
       }
     }
-    if(person.rule6){
-      for(let d = 0; d < 28; d++){
-        if(getDow(d) === 1 && !isDayOff(sid,d) && !isWorking(sid,d)){
-          if(canAssignForAuto(sid,d,'晚')) setAssignment(sid, d, '晚');
-        }
-      }
-    }
+    // rule6: handled by Phase 9 swap after scheduling
   });
 
   // Phase 2: Employees FIRST — each employee gets exactly 3 shifts per week
@@ -785,6 +779,38 @@ function runAutoSchedule(){
     }
   });
 
+  // Phase 9: rule6 swap — people with "週一上晚班" MUST swap to 晚班 on Mondays
+  state.staff.filter(p => p.rule6).forEach(person => {
+    const sid = person.id;
+    for(let d = 0; d < 28; d++){
+      if(getDow(d) !== 1) continue; // Only Monday
+      const myShift = getAssignment(sid, d);
+      if(!myShift || myShift === '休' || myShift === '晚') continue;
+      // Must swap: find someone with 晚班 on this Monday
+      const swapPartner = state.staff.find(p2 => {
+        if(p2.id === sid) return false;
+        if(getAssignment(p2.id, d) !== '晚') return false;
+        if(p2.rule6) return false; // They also need 晚, can't swap
+        // Check partner can take myShift without violating night-morning
+        if(myShift === '早' && d > 0 && getAssignment(p2.id, d-1) === '晚' && !p2.allowNightToMorning) return false;
+        if(myShift === '晚') return true; // already checked above
+        return true;
+      });
+      if(swapPartner){
+        const partnerOldShift = '晚';
+        clearAssignment(swapPartner.id, d);
+        clearAssignment(sid, d);
+        setAssignment(sid, d, '晚');
+        setAssignment(swapPartner.id, d, myShift);
+      } else if(!isWorking(sid, d)){
+        // Not working Monday — if 晚班 slot available, just assign
+        if(slotAvailable(d, '晚')){
+          setAssignment(sid, d, '晚');
+        }
+      }
+    }
+  });
+
   // Check: managers/supervisors MUST hit exact desiredDays, retry up to 10 times if not
   const leadersMet = state.staff.filter(s => s.role === 'manager' || s.role === 'supervisor')
     .every(p => countWorkDays(p.id) === p.desiredDays);
@@ -852,11 +878,7 @@ function canAssignForAuto(sid, di, shift){
   if(person.rule5 && isWeekend(di)){
     if(countFreeWeekendDays(sid) <= 2) return false;
   }
-  // Rule 6: force Monday evening shift
-  if(person.rule6 && getDow(di) === 1 && shift !== '晚' && slotAvailable(di, '晚')){
-    return false;
-  }
-  // Rule 7 & preferNight: skip during scheduling — handled by Phase 7/8 swap after
+  // Rule 6, 7, preferNight: skip during scheduling — handled by Phase 7/8/9 swap after
   return true;
 }
 
