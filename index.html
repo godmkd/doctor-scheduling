@@ -760,6 +760,52 @@ function runAutoSchedule(){
     }
   }
 
+  // Phase 6: Weekend swap for rule4 (六日必休一天) — try swapping weekend shift with same-week weekday
+  state.staff.filter(p => p.rule4).forEach(person => {
+    const sid = person.id;
+    for(let w = 0; w < 4; w++){
+      // Check if both Sat and Sun are working in this week
+      let satDay = -1, sunDay = -1;
+      for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+        if(getDow(d) === 6 && isWorking(sid, d)) satDay = d;
+        if(getDow(d) === 0 && isWorking(sid, d)) sunDay = d;
+      }
+      if(satDay === -1 || sunDay === -1) continue; // Already has a free weekend day
+      // Both Sat & Sun working — try to swap one with a weekday in same week
+      const weekendDays = [satDay, sunDay].sort(() => Math.random() - 0.5);
+      let swapped = false;
+      for(const weDay of weekendDays){
+        const weShift = getAssignment(sid, weDay);
+        // Find a weekday in same week where person is NOT working, and someone else can cover the weekend
+        for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+          if(isWeekend(d)) continue;
+          if(isWorking(sid, d)) continue; // person already working this weekday
+          if(isDayOff(sid, d)) continue;
+          if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
+          // Check if person can work this weekday with the weekend shift type
+          const weekdayShifts = getAvailShifts(d);
+          if(!weekdayShifts.includes(weShift)) continue;
+          // Find someone who can take the weekend slot
+          const replacement = state.staff.find(p2 => {
+            if(p2.id === sid) return false;
+            if(isWorking(p2.id, weDay)) return false;
+            if(isDayOff(p2.id, weDay)) return false;
+            if(p2.weeklyOff && p2.weeklyOff[getDow(weDay)]) return false;
+            return canAssignForAuto(p2.id, weDay, weShift);
+          });
+          if(replacement){
+            // Do the swap: person moves from weekend to weekday, replacement takes weekend
+            clearAssignment(sid, weDay);
+            setAssignment(sid, d, weShift);
+            setAssignment(replacement.id, weDay, weShift);
+            swapped = true; break;
+          }
+        }
+        if(swapped) break;
+      }
+    }
+  });
+
   // Check: managers/supervisors MUST hit exact desiredDays, retry up to 10 times if not
   const leadersMet = state.staff.filter(s => s.role === 'manager' || s.role === 'supervisor')
     .every(p => countWorkDays(p.id) === p.desiredDays);
