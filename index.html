@@ -591,7 +591,7 @@ function runAutoSchedule(){
   // Pass 2: ignore slot limits + most rules, just fill
   for(const person of leaders){
     const sid = person.id;
-    // Pass 1: with rules, overfill OK
+    // Pass 1: with all rules + slot limit
     let retry1 = 0;
     while(countWorkDays(sid) < person.desiredDays && retry1 < 100){
       retry1++;
@@ -601,8 +601,6 @@ function runAutoSchedule(){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
         if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
         if(wouldExceedConsecutiveIfAdded(sid, d)) continue;
-        if(violatesNightMorning(sid, d, getAvailShifts(d)[0])) continue;
-        // Check rule4 (weekend rest)
         if(person.rule4 && isWeekend(d)){
           const wi = getWeekIndex(d);
           let otherFree = false;
@@ -614,6 +612,8 @@ function runAutoSchedule(){
         const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
         for(const shift of shifts){
           if(violatesNightMorning(sid, d, shift)) continue;
+          // Must respect slot limit — no overfill
+          if(getSlotCount(d, shift) >= getDayReq(d)[shift]) continue;
           setAssignment(sid, d, shift);
           placed = true; break;
         }
@@ -621,7 +621,7 @@ function runAutoSchedule(){
       }
       if(!placed) break;
     }
-    // Pass 2: ignore most rules, just fill any open day
+    // Pass 2: relax rules but still respect slot limit
     let retry2 = 0;
     while(countWorkDays(sid) < person.desiredDays && retry2 < 100){
       retry2++;
@@ -631,10 +631,12 @@ function runAutoSchedule(){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
         if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
         const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
-        if(shifts.length > 0){
-          setAssignment(sid, d, shifts[0]);
+        for(const shift of shifts){
+          if(getSlotCount(d, shift) >= getDayReq(d)[shift]) continue;
+          setAssignment(sid, d, shift);
           placed = true; break;
         }
+        if(placed) break;
       }
       if(!placed) break;
     }
