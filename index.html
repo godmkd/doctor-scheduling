@@ -650,6 +650,28 @@ function runAutoSchedule(){
     }
   }
 
+  // Check: managers/supervisors MUST hit exact desiredDays, retry up to 10 times if not
+  const leadersMet = state.staff.filter(s => s.role === 'manager' || s.role === 'supervisor')
+    .every(p => countWorkDays(p.id) === p.desiredDays);
+  if(!leadersMet && (state._retryCount || 0) < 10){
+    state._retryCount = (state._retryCount || 0) + 1;
+    // Re-run with fresh randomization
+    state.staff.forEach(s => { state.assignments[s.id] = {}; });
+    runAutoSchedule();
+    return;
+  }
+
+  // Validate and auto-retry if rules violated (up to 10 attempts total)
+  const testWarnings = validate(true); // silent mode
+  const hasRuleViolation = testWarnings.some(w => w.type === 'error');
+  if(hasRuleViolation && (state._retryCount || 0) < 10){
+    state._retryCount = (state._retryCount || 0) + 1;
+    state.staff.forEach(s => { state.assignments[s.id] = {}; });
+    runAutoSchedule();
+    return;
+  }
+  delete state._retryCount;
+
   // Fill ALL remaining unassigned days with "休" (red label) for every person
   state.staff.forEach(person => {
     const sid = person.id;
@@ -735,7 +757,7 @@ function clearAllAssignments(){
 }
 
 // ===== VALIDATION =====
-function validate(){
+function validate(silent){
   const warnings = [];
   state.staff.forEach(person => {
     const sid = person.id;
