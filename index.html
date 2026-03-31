@@ -471,14 +471,19 @@ function runAutoSchedule(){
     }
   });
 
-  // Phase 2A: Fill managers and supervisors FIRST (greedy, one at a time to target)
+  // Phase 2A: Fill managers and supervisors TOGETHER (round-robin, randomized)
   const leaders = state.staff.filter(s => s.role === 'manager' || s.role === 'supervisor');
-  for(const person of leaders){
-    const sid = person.id;
-    const target = person.desiredDays;
-    let safety = 0;
-    while(countWorkDays(sid) < target && safety < 200){
-      safety++;
+  let leaderChanged = true;
+  let leaderSafety = 0;
+  while(leaderChanged && leaderSafety < 2000){
+    leaderSafety++;
+    leaderChanged = false;
+    // Shuffle then sort by fewest days (randomness breaks ties)
+    const shuffled = [...leaders].sort(() => Math.random() - 0.5);
+    shuffled.sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
+    for(const person of shuffled){
+      const sid = person.id;
+      if(countWorkDays(sid) >= person.desiredDays) continue;
       const options = [];
       for(let d = 0; d < 28; d++){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
@@ -487,29 +492,33 @@ function runAutoSchedule(){
           if(canAssignForAuto(sid, d, shift)){
             const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
             if(needed <= 0) continue;
-            const urgency = needed * 10 + getSlotDifficulty(d, shift, sid);
-            options.push({d, shift, urgency});
+            options.push({d, shift});
           }
         }
       }
-      if(options.length === 0) break;
-      options.sort((a,b) => b.urgency - a.urgency);
-      setAssignment(sid, options[0].d, options[0].shift);
+      if(options.length === 0) continue;
+      // Random pick from options
+      const pick = options[Math.floor(Math.random() * options.length)];
+      setAssignment(sid, pick.d, pick.shift);
+      leaderChanged = true;
+      break;
     }
   }
 
-  // Phase 2B: Fill employees with round-robin (fairness: fewest work days first)
+  // Phase 2B: Fill employees (round-robin, randomized, fill slots that still need people)
   const employees = state.staff.filter(s => s.role === 'employee');
   let changed = true;
   let safetyCounter = 0;
   while(changed && safetyCounter < 2000){
     safetyCounter++;
     changed = false;
-    const sorted = [...employees].sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
+    // Shuffle then sort by fewest days
+    const sorted = [...employees].sort(() => Math.random() - 0.5);
+    sorted.sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
     for(const person of sorted){
       const sid = person.id;
-      const target = person.maxDays !== undefined ? person.maxDays : 16;
-      if(countWorkDays(sid) >= target) continue;
+      const maxTarget = person.maxDays !== undefined ? person.maxDays : 16;
+      if(countWorkDays(sid) >= maxTarget) continue;
       const options = [];
       for(let d = 0; d < 28; d++){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
@@ -518,14 +527,14 @@ function runAutoSchedule(){
           if(canAssignForAuto(sid, d, shift)){
             const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
             if(needed <= 0) continue;
-            const urgency = needed * 10 + getSlotDifficulty(d, shift, sid);
-            options.push({d, shift, urgency});
+            options.push({d, shift});
           }
         }
       }
       if(options.length === 0) continue;
-      options.sort((a,b) => b.urgency - a.urgency);
-      setAssignment(sid, options[0].d, options[0].shift);
+      // Random pick
+      const pick = options[Math.floor(Math.random() * options.length)];
+      setAssignment(sid, pick.d, pick.shift);
       changed = true;
       break;
     }
