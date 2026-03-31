@@ -251,6 +251,11 @@ function removeStaff(id){
   saveState(); render();
 }
 
+function toggleSidebar(){
+  state._sidebarCollapsed = !state._sidebarCollapsed;
+  renderSidebar();
+}
+
 function toggleWeeklyOff(id, dowIndex, checked){
   const s = state.staff.find(x => x.id === id);
   if(!s) return;
@@ -1037,7 +1042,16 @@ function render(){
 
 function renderSidebar(){
   const el = document.getElementById('sidebar');
-  let html = `<h2>員工管理 <button class="btn btn-outline btn-sm" onclick="addStaff()">+ 新增</button></h2>`;
+  const collapsed = state._sidebarCollapsed || false;
+  let html = `<h2 style="cursor:pointer" onclick="toggleSidebar()">
+    <span>${collapsed ? '▶' : '▼'} 員工管理</span>
+    <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();addStaff()">+ 新增</button>
+  </h2>`;
+  if(collapsed){
+    html += `<div style="font-size:.8rem;color:var(--text2);padding:4px 0">共 ${state.staff.length} 人（點擊展開）</div>`;
+    el.innerHTML = html;
+    return;
+  }
 
   const roleOrder = ['manager','supervisor','employee'];
   for(const role of roleOrder){
