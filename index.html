@@ -156,6 +156,7 @@ function getDefaultState(){
     staff: [],
     dayOffs: {},
     assignments: {},
+    manualLocks: {},
     exceptions: {}
   };
 }
@@ -179,6 +180,7 @@ function loadState(){
           if(st.allowNightToMorning === undefined) st.allowNightToMorning = false;
           if(!st.weeklyOff) st.weeklyOff = [false,false,false,false,false,false,false];
         });
+        if(!p.manualLocks) p.manualLocks = {};
         return p;
       }
     }
@@ -317,8 +319,20 @@ function setAssignment(sid, di, shift){
   if(!state.assignments[sid]) state.assignments[sid] = {};
   state.assignments[sid][di] = shift;
 }
-function clearAssignment(sid, di){
+function clearAssignment(sid, di, force){
+  if(!force && isManualLocked(sid, di)) return; // Don't clear manual locks
   if(state.assignments[sid]) delete state.assignments[sid][di];
+}
+function isManualLocked(sid, di){
+  return state.manualLocks && state.manualLocks[sid] && state.manualLocks[sid][di];
+}
+function setManualLock(sid, di, shift){
+  if(!state.manualLocks) state.manualLocks = {};
+  if(!state.manualLocks[sid]) state.manualLocks[sid] = {};
+  state.manualLocks[sid][di] = shift;
+}
+function clearManualLock(sid, di){
+  if(state.manualLocks && state.manualLocks[sid]) delete state.manualLocks[sid][di];
 }
 function isDayOff(sid, di){
   return (state.dayOffs[sid] || []).includes(di);
@@ -404,8 +418,15 @@ function countFreeWeekendDays(sid){
 
 // ===== AUTO SCHEDULE =====
 function runAutoSchedule(){
-  // Clear all non-manual (clear all for simplicity)
-  state.staff.forEach(s => { state.assignments[s.id] = {}; });
+  // Clear only non-manual assignments (preserve manually locked shifts)
+  state.staff.forEach(s => {
+    const locked = state.manualLocks && state.manualLocks[s.id] ? {...state.manualLocks[s.id]} : {};
+    state.assignments[s.id] = {};
+    // Restore locked shifts
+    for(const di in locked){
+      state.assignments[s.id][di] = locked[di];
+    }
+  });
 
   // Phase 0: Mark weekly fixed off days as 休
   state.staff.forEach(person => {
@@ -1259,6 +1280,7 @@ function renderMain(){
           content = `<span class="badge badge-${assign}">${assign}</span>`;
         }
         if(exc) content += '<span class="exception-mark" title="例外：允許晚班後排早班">!</span>';
+        if(isManualLocked(sid, d)) content += '<span class="exception-mark" style="color:var(--primary);left:2px;right:auto" title="手動鎖定">🔒</span>';
         html += `<td class="cell${we}${offCls}" style="${weekBorder}" data-sid="${sid}" data-day="${d}" onclick="onCellClick(event,${sid},${d})">${content}</td>`;
       }
       // Total
@@ -1482,22 +1504,21 @@ function checkRuleViolationsForManual(sid, di, shift){
 
 function menuSetShift(sid, di, shift){
   if(isDayOff(sid, di)){
-    toggleDayOff(sid, di); // Remove day off first
+    toggleDayOff(sid, di);
   }
-  // Check if already has this shift → toggle off
   if(getAssignment(sid, di) === shift){
-    clearAssignment(sid, di);
+    clearAssignment(sid, di, true); // Force clear even if locked
+    clearManualLock(sid, di);
   } else {
-    // Check rule violations before assigning
     const violation = checkRuleViolationsForManual(sid, di, shift);
     if(violation){
       alert(violation);
       hideCellMenu();
       return;
     }
-    // Clear any existing assignment for this person on this day
-    clearAssignment(sid, di);
+    clearAssignment(sid, di, true); // Force clear for manual override
     setAssignment(sid, di, shift);
+    setManualLock(sid, di, shift);
   }
   hideCellMenu();
   saveState(); render();
