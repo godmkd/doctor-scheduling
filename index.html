@@ -554,76 +554,37 @@ function runAutoSchedule(){
     // (exactly 3 per employee per week — no more in this phase)
   }
 
-  // Phase 3: Fill managers and supervisors TOGETHER to exact target (round-robin, randomized)
+  // Phase 3: Fill managers and supervisors to exact target
+  // Pass 1: fill open slots with rules
+  // Pass 2: fill any open day (no slot limit, no swap) — just add to shift
   const leaders = state.staff.filter(s => s.role === 'manager' || s.role === 'supervisor');
-  let leaderChanged = true;
-  let leaderSafety = 0;
-  while(leaderChanged && leaderSafety < 2000){
-    leaderSafety++;
-    leaderChanged = false;
-    const shuffled = [...leaders].sort(() => Math.random() - 0.5);
-    shuffled.sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
-    for(const person of shuffled){
-      const sid = person.id;
-      if(countWorkDays(sid) >= person.desiredDays) continue;
-      const options = [];
-      for(let d = 0; d < 28; d++){
-        if(isDayOff(sid,d) || isWorking(sid,d)) continue;
-        const shifts = getAvailShifts(d);
-        for(const shift of shifts){
-          if(canAssignForAuto(sid, d, shift)){
-            const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
-            if(needed <= 0) continue;
-            options.push({d, shift});
-          }
-        }
-      }
-      if(options.length === 0) continue;
-      const pick = options[Math.floor(Math.random() * options.length)];
-      setAssignment(sid, pick.d, pick.shift);
-      leaderChanged = true;
-      break;
-    }
-  }
-
-  // Phase 3B: Force-fill leaders who didn't reach target
-  // Pass 1: try with all rules (canAssignForAuto), overfill slots if needed
-  // Pass 2: ignore slot limits + most rules, just fill
   for(const person of leaders){
     const sid = person.id;
-    // Pass 1: with all rules + slot limit
+    // Pass 1: round-robin with rules, only open slots
     let retry1 = 0;
-    while(countWorkDays(sid) < person.desiredDays && retry1 < 100){
+    while(countWorkDays(sid) < person.desiredDays && retry1 < 200){
       retry1++;
       let placed = false;
       const days = Array.from({length:28}, (_,i) => i).sort(() => Math.random() - 0.5);
       for(const d of days){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
         if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
-        if(wouldExceedConsecutiveIfAdded(sid, d)) continue;
-        if(person.rule4 && isWeekend(d)){
-          const wi = getWeekIndex(d);
-          let otherFree = false;
-          for(let dd = wi*7; dd < (wi+1)*7 && dd < 28; dd++){
-            if(dd !== d && isWeekend(dd) && !isWorking(sid,dd)) otherFree = true;
-          }
-          if(!otherFree) continue;
-        }
         const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
         for(const shift of shifts){
-          if(violatesNightMorning(sid, d, shift)) continue;
-          // Must respect slot limit — no overfill
-          if(getSlotCount(d, shift) >= getDayReq(d)[shift]) continue;
-          setAssignment(sid, d, shift);
-          placed = true; break;
+          if(canAssignForAuto(sid, d, shift)){
+            const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
+            if(needed <= 0) continue;
+            setAssignment(sid, d, shift);
+            placed = true; break;
+          }
         }
         if(placed) break;
       }
       if(!placed) break;
     }
-    // Pass 2: relax rules, still respect slot limit
+    // Pass 2: any open day, pick a random shift (extra person on that shift, no swap)
     let retry2 = 0;
-    while(countWorkDays(sid) < person.desiredDays && retry2 < 100){
+    while(countWorkDays(sid) < person.desiredDays && retry2 < 200){
       retry2++;
       let placed = false;
       const days = Array.from({length:28}, (_,i) => i).sort(() => Math.random() - 0.5);
@@ -631,35 +592,10 @@ function runAutoSchedule(){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
         if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
         const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
-        for(const shift of shifts){
-          if(getSlotCount(d, shift) >= getDayReq(d)[shift]) continue;
-          setAssignment(sid, d, shift);
+        if(shifts.length > 0){
+          setAssignment(sid, d, shifts[0]);
           placed = true; break;
         }
-        if(placed) break;
-      }
-      if(!placed) break;
-    }
-    // Pass 3: swap with employee if all slots full — leader MUST reach target
-    let retry3 = 0;
-    while(countWorkDays(sid) < person.desiredDays && retry3 < 100){
-      retry3++;
-      let placed = false;
-      const days = Array.from({length:28}, (_,i) => i).sort(() => Math.random() - 0.5);
-      for(const d of days){
-        if(isDayOff(sid,d) || isWorking(sid,d)) continue;
-        if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
-        const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
-        for(const shift of shifts){
-          // Find an employee holding this slot and swap
-          const emp = state.staff.find(p => p.role === 'employee' && getAssignment(p.id, d) === shift);
-          if(emp){
-            clearAssignment(emp.id, d);
-            setAssignment(sid, d, shift);
-            placed = true; break;
-          }
-        }
-        if(placed) break;
       }
       if(!placed) break;
     }
