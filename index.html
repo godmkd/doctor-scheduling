@@ -1300,92 +1300,66 @@ function renderMain(){
     <span style="margin-left:8px;font-size:.7rem;color:var(--text2)">點擊儲存格可編輯</span>
   </div>`;
 
-  // Schedule table
-  html += `<div class="schedule-wrapper"><table class="schedule">`;
+  // Schedule tables — one per week (W1-W4)
+  const DOW_LABELS = ['一','二','三','四','五','六','日'];
+  for(let w = 0; w < 4; w++){
+    const wStart = w * 7;
+    html += `<div class="schedule-wrapper" style="margin-bottom:16px">`;
+    html += `<table class="schedule"><thead><tr>`;
+    html += `<th class="col-name corner" style="font-weight:700;background:#e2e8f0">W${w+1}</th>`;
+    for(let wd = 0; wd < 7; wd++){
+      const d = wStart + wd;
+      const we = isWeekend(d) ? ' weekend' : '';
+      const req = getDayReq(d);
+      const reqStr = SHIFTS.filter(s => req[s]>0).map(s => `${s}${req[s]}`).join(' ');
+      html += `<th class="day-header${we}">
+        <div class="dow">星期${DOW_LABELS[wd]}</div>
+        <div class="date">${getDayLabel(d)}</div>
+        <div class="req">${reqStr}</div>
+      </th>`;
+    }
+    html += `</tr></thead><tbody>`;
 
-  // Header row
-  html += `<thead><tr><th class="col-name corner">姓名</th>`;
-  for(let d = 0; d < 28; d++){
-    const dow = getDow(d);
-    const we = isWeekend(d) ? ' weekend' : '';
-    const req = getDayReq(d);
-    const reqStr = SHIFTS.filter(s => req[s]>0).map(s => `${s}${req[s]}`).join(' ');
-    const weekBorder = (d > 0 && d % 7 === 0) ? 'border-left:2px solid #94a3b8;' : '';
-    html += `<th class="day-header${we}" style="${weekBorder}">
-      <div class="dow">${DOW_NAMES[dow]}</div>
-      <div class="date">${getDayLabel(d)}</div>
-      <div class="req">${reqStr}</div>
-    </th>`;
-  }
-  html += `<th class="day-header" style="min-width:50px">合計</th></tr></thead><tbody>`;
-
-  // Staff rows grouped by role
-  const roleOrder = ['manager','supervisor','employee'];
-  for(const role of roleOrder){
-    const people = state.staff.filter(s => s.role === role);
-    if(people.length === 0) continue;
-    html += `<tr class="role-row"><td class="col-name" colspan="${30}">${ROLE_LABEL[role]}（${people.length}人）</td></tr>`;
-    for(const person of people){
+    // Staff rows
+    state.staff.forEach(person => {
       const sid = person.id;
-      const sel = selectedStaffId === sid ? ' style="background:#eff6ff"' : '';
-      html += `<tr${sel}>`;
-      html += `<td class="col-name" style="${selectedStaffId===sid?'background:#eff6ff;font-weight:700':''}">${esc(person.name)}</td>`;
-      for(let d = 0; d < 28; d++){
+      html += `<tr>`;
+      html += `<td class="col-name">${esc(person.name)}</td>`;
+      for(let wd = 0; wd < 7; wd++){
+        const d = wStart + wd;
         const off = isDayOff(sid, d);
         const assign = getAssignment(sid, d);
         const exc = hasException(sid, d);
         const we = isWeekend(d) ? ' weekend' : '';
         const offCls = off ? ' day-off' : '';
-        const weekBorder = (d > 0 && d % 7 === 0) ? 'border-left:2px solid #94a3b8;' : '';
         let content = '';
         if(off){
           content = '<span class="badge badge-休">休</span>';
         } else if(assign){
           content = `<span class="badge badge-${assign}">${assign}</span>`;
         }
-        if(exc) content += '<span class="exception-mark" title="例外：允許晚班後排早班">!</span>';
+        if(exc) content += '<span class="exception-mark" title="例外">!</span>';
         if(isManualLocked(sid, d)) content += '<span class="exception-mark" style="color:var(--primary);left:2px;right:auto" title="手動鎖定">🔒</span>';
-        const hasBadge = assign && assign !== '休';
-        html += `<td class="cell${we}${offCls}" style="${weekBorder}" data-sid="${sid}" data-day="${d}" onclick="onCellClick(event,${sid},${d})"${hasBadge ? ` draggable="true" ondragstart="onDragStart(event,${sid},${d})" ondragover="onDragOver(event,${sid},${d})" ondragleave="onDragLeave(event)" ondrop="onDrop(event,${sid},${d})"` : ` ondragover="onDragOver(event,${sid},${d})" ondragleave="onDragLeave(event)" ondrop="onDrop(event,${sid},${d})"`}>${content}</td>`;
+        const hasAny = assign !== null;
+        html += `<td class="cell${we}${offCls}" data-sid="${sid}" data-day="${d}" onclick="onCellClick(event,${sid},${d})"${hasAny ? ` draggable="true" ondragstart="onDragStart(event,${sid},${d})"` : ''} ondragover="onDragOver(event,${sid},${d})" ondragleave="onDragLeave(event)" ondrop="onDrop(event,${sid},${d})">${content}</td>`;
       }
-      // Total
-      const total = countWorkDays(sid);
-      html += `<td class="cell" style="font-size:.75rem;font-weight:600;cursor:default">${total}</td>`;
       html += `</tr>`;
-    }
-  }
+    });
 
-  // Daily totals row
-  html += `<tr class="stats-row"><td class="col-name">每日人數</td>`;
-  for(let d = 0; d < 28; d++){
-    const req = getDayReq(d);
-    let totalReq = 0, totalFilled = 0;
-    SHIFTS.forEach(s => { totalReq += req[s]; totalFilled += getSlotCount(d,s); });
-    const cls = totalFilled >= totalReq ? 'stat-ok' : 'stat-warn';
-    const weekBorder = (d > 0 && d % 7 === 0) ? 'border-left:2px solid #94a3b8;' : '';
-    html += `<td class="${cls}" style="font-size:.7rem;padding:4px 2px;${weekBorder}">${totalFilled}/${totalReq}</td>`;
-  }
-  html += `<td></td></tr>`;
-
-  // Per-shift breakdown row
-  for(const shift of SHIFTS){
-    html += `<tr class="stats-row"><td class="col-name" style="padding-left:16px !important">${shift}班</td>`;
-    for(let d = 0; d < 28; d++){
+    // Daily totals row
+    html += `<tr class="stats-row"><td class="col-name">人數</td>`;
+    for(let wd = 0; wd < 7; wd++){
+      const d = wStart + wd;
       const req = getDayReq(d);
-      const count = getSlotCount(d, shift);
-      const needed = req[shift] || 0;
-      const weekBorder = (d > 0 && d % 7 === 0) ? 'border-left:2px solid #94a3b8;' : '';
-      if(needed === 0){
-        html += `<td style="font-size:.65rem;color:#cbd5e1;padding:2px;${weekBorder}">-</td>`;
-      } else {
-        const cls = count >= needed ? 'stat-ok' : 'stat-warn';
-        html += `<td class="${cls}" style="font-size:.7rem;padding:2px;${weekBorder}">${count}/${needed}</td>`;
-      }
+      let totalReq = 0, totalFilled = 0;
+      SHIFTS.forEach(s => { totalReq += req[s]; totalFilled += getSlotCount(d,s); });
+      const cls = totalFilled >= totalReq ? 'stat-ok' : 'stat-warn';
+      html += `<td class="${cls}" style="font-size:.7rem;padding:4px 2px">${totalFilled}/${totalReq}</td>`;
     }
-    html += `<td></td></tr>`;
-  }
+    html += `</tr>`;
 
-  html += `</tbody></table></div>`;
+    html += `</tbody></table></div>`;
+  }
 
   // Summary cards
   html += `<div class="summary-cols">`;
@@ -1594,16 +1568,9 @@ function menuSetShift(sid, di, shift){
       }
     }
     // Check night-morning
-    if(!person.allowNightToMorning){
-      if(shift === '早' && di > 0 && getAssignment(sid, di-1) === '晚'){
-        if(!confirm(`${person.name}：前一天是晚班，隔天排早班，確定嗎？`)){
-          hideCellMenu(); return;
-        }
-      }
-      if(shift === '晚' && di < 27 && getAssignment(sid, di+1) === '早'){
-        if(!confirm(`${person.name}：隔天是早班，今天排晚班，確定嗎？`)){
-          hideCellMenu(); return;
-        }
+    if(violatesNightMorning(sid, di, shift)){
+      if(!confirm(`${person.name}：晚班接早班，確定嗎？`)){
+        hideCellMenu(); return;
       }
     }
     // All other rules: just assign, warnings will show in validate below
@@ -1640,36 +1607,44 @@ function selectStaff(id){
 
 // ===== EXPORT =====
 function exportSchedule(){
-  let text = '排班表\n';
-  text += `起始日期: ${state.startDate}\n\n`;
-
-  // Header
-  text += '姓名\t角色\t';
-  for(let d = 0; d < 28; d++){
-    text += `${getDayLabel(d)}(${DOW_NAMES[getDow(d)]})\t`;
-  }
-  text += '合計\n';
-
-  state.staff.forEach(p => {
-    text += `${p.name}\t${ROLE_LABEL[p.role]}\t`;
-    let total = 0;
-    for(let d = 0; d < 28; d++){
-      if(isDayOff(p.id, d)){
-        text += '休\t';
-      } else {
-        const a = getAssignment(p.id, d);
-        text += (a || '') + '\t';
-        if(a && a !== '休') total++;
-      }
+  let csv = '';
+  const DOW_LABELS = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
+  
+  for(let w = 0; w < 4; w++){
+    // Week header
+    csv += `W${w+1},`;
+    for(let wd = 0; wd < 7; wd++){
+      const d = w * 7 + wd;
+      if(d < 28) csv += `${DOW_LABELS[wd]} ${getDayLabel(d)}`;
+      if(wd < 6) csv += ',';
     }
-    text += total + '\n';
-  });
+    csv += '\n';
+    
+    // Each person
+    state.staff.forEach(p => {
+      csv += `${p.name},`;
+      for(let wd = 0; wd < 7; wd++){
+        const d = w * 7 + wd;
+        if(d < 28){
+          if(isDayOff(p.id, d)){
+            csv += '休';
+          } else {
+            const a = getAssignment(p.id, d);
+            csv += a || '';
+          }
+        }
+        if(wd < 6) csv += ',';
+      }
+      csv += '\n';
+    });
+    csv += '\n'; // Blank line between weeks
+  }
 
-  const blob = new Blob(['\uFEFF' + text], {type:'text/plain;charset=utf-8'});
+  const blob = new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `排班表_${state.startDate}.txt`;
+  a.download = `排班表_${state.startDate}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
