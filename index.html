@@ -76,7 +76,7 @@ thead th.col-name{z-index:5;background:#f8fafc}
 .cell:hover{background:#f0f4ff}
 .cell.day-off{background:var(--off-light) !important}
 .cell .badge{display:inline-block;padding:1px 8px;border-radius:4px;font-size:.7rem;font-weight:600;color:#fff}
-.badge-早{background:var(--morning)}.badge-中{background:var(--afternoon)}.badge-晚{background:var(--evening)}
+.badge-早{background:var(--morning)}.badge-早1{background:var(--morning)}.badge-早2{background:#2563eb}.badge-中{background:var(--afternoon)}.badge-晚{background:var(--evening)}.badge-晚1{background:var(--evening)}.badge-晚2{background:#6d28d9}
 .badge-休{background:var(--off);font-size:.65rem}
 .cell .exception-mark{position:absolute;top:1px;right:2px;font-size:.55rem;color:var(--exception);font-weight:700}
 .cell[draggable="true"]{cursor:grab}
@@ -368,7 +368,12 @@ function toggleException(sid, di){
 function getSlotCount(di, shift){
   let count = 0;
   state.staff.forEach(s => {
-    if(getAssignment(s.id, di) === shift) count++;
+    const a = getAssignment(s.id, di);
+    if(!a) return;
+    if(a === shift) { count++; return; }
+    // Count 早1/早2 as 早, 晚1/晚2 as 晚
+    if(shift === '早' && a.startsWith('早')) count++;
+    else if(shift === '晚' && a.startsWith('晚')) count++;
   });
   return count;
 }
@@ -397,14 +402,17 @@ function wouldExceedConsecutiveIfAdded(sid, di){
   return (runBefore + 1 + runAfter) > 6;
 }
 
+function isShiftMorning(s){ return s === '早' || (s && s.startsWith('早')); }
+function isShiftEvening(s){ return s === '晚' || (s && s.startsWith('晚')); }
+
 function violatesNightMorning(sid, di, shift){
   const person = getStaffById(sid);
   if(person && person.allowNightToMorning) return false;
-  if(shift === '早' && di > 0){
-    if(getAssignment(sid, di-1) === '晚' && !hasException(sid, di)) return true;
+  if(isShiftMorning(shift) && di > 0){
+    if(isShiftEvening(getAssignment(sid, di-1)) && !hasException(sid, di)) return true;
   }
-  if(shift === '晚' && di < 27){
-    if(getAssignment(sid, di+1) === '早' && !hasException(sid, di+1)) return true;
+  if(isShiftEvening(shift) && di < 27){
+    if(isShiftMorning(getAssignment(sid, di+1)) && !hasException(sid, di+1)) return true;
   }
   return false;
 }
@@ -997,6 +1005,47 @@ function runAutoSchedule(){
     }
   });
 
+  // Phase 11: Convert 早→早1/早2, 晚→晚1/晚2 randomly; preferNight晚班→強制晚2
+  for(let d = 0; d < 28; d++){
+    const morningPeople = [];
+    const eveningPeople = [];
+    state.staff.forEach(p => {
+      const a = getAssignment(p.id, d);
+      if(a === '早') morningPeople.push(p);
+      if(a === '晚') eveningPeople.push(p);
+    });
+    // Assign 早1/早2 randomly
+    morningPeople.sort(() => Math.random() - 0.5);
+    morningPeople.forEach((p, i) => {
+      setAssignment(p.id, d, `早${i+1}`);
+    });
+    // Assign 晚1/晚2: preferNight people get 晚2, others random
+    const preferNightPeople = eveningPeople.filter(p => p.preferNight);
+    const otherEvening = eveningPeople.filter(p => !p.preferNight);
+    // Shuffle others
+    otherEvening.sort(() => Math.random() - 0.5);
+    // Build assignment: preferNight → 晚2, others fill remaining
+    const eveningSlots = [];
+    for(let i = 0; i < eveningPeople.length; i++) eveningSlots.push(`晚${i+1}`);
+    // First assign 晚2 to preferNight people
+    preferNightPeople.forEach(p => {
+      const idx = eveningSlots.indexOf('晚2');
+      if(idx >= 0){
+        setAssignment(p.id, d, '晚2');
+        eveningSlots.splice(idx, 1);
+      } else {
+        // 晚2 already taken, assign whatever's left
+        const slot = eveningSlots.shift();
+        if(slot) setAssignment(p.id, d, slot);
+      }
+    });
+    // Then assign remaining slots to others
+    otherEvening.forEach(p => {
+      const slot = eveningSlots.shift();
+      if(slot) setAssignment(p.id, d, slot);
+    });
+  }
+
   saveState(); render();
 }
 
@@ -1373,7 +1422,14 @@ function renderMain(){
       : p.desiredDays;
     const worked = countWorkDays(p.id);
     let sc = {早:0,中:0,晚:0};
-    for(let d=0;d<28;d++){ const a=getAssignment(p.id,d); if(a && a !== '休')sc[a]++; }
+    for(let d=0;d<28;d++){
+      const a=getAssignment(p.id,d);
+      if(a && a !== '休'){
+        if(a.startsWith('早')) sc['早']++;
+        else if(a.startsWith('晚')) sc['晚']++;
+        else if(a === '中') sc['中']++;
+      }
+    }
     const offCount = 28 - worked;
     let cls = '';
     if(p.role === 'employee'){
