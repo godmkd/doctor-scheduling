@@ -495,11 +495,11 @@ function runAutoSchedule(){
         for(const d of days){
           if(isDayOff(sid,d) || isWorking(sid,d)) continue;
           if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
+          if(wouldExceedConsecutiveIfAdded(sid, d)) continue;
           const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
           for(const shift of shifts){
-            if(!canAssignForAuto(sid, d, shift)) continue;
-            const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
-            if(needed <= 0) continue;
+            if(violatesNightMorning(sid, d, shift)) continue;
+            // Phase 2: don't check slot limit — employee 3/week is highest priority
             setAssignment(sid, d, shift);
             myWeekShifts++; added = true; break;
           }
