@@ -121,6 +121,7 @@ thead th.col-name{z-index:5;background:#f8fafc}
   <h1>排班系統</h1>
   <div class="header-controls">
     <label>起始日期 <input type="date" id="start-date"></label>
+    <label>排班總天數 <input type="number" id="total-days" min="7" max="56" value="28" style="width:50px;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;font-size:.85rem" onchange="updateTotalDays(this.value)"></label>
     <button class="btn btn-primary" onclick="runAutoSchedule()">自動排班</button>
     <button class="btn btn-danger" onclick="clearAllAssignments()">清除排班</button>
     <button class="btn btn-success" onclick="exportSchedule()">匯出</button>
@@ -155,6 +156,7 @@ function getDefaultState(){
   d.setDate(d.getDate() + diff);
   return {
     startDate: fmt(d),
+    totalDays: 28,
     nextId: 1,
     staff: [],
     dayOffs: {},
@@ -185,6 +187,14 @@ function loadState(){
           if(!st.weeklyOff) st.weeklyOff = [false,false,false,false,false,false,false];
         });
         if(!p.manualLocks) p.manualLocks = {};
+        if(!p.totalDays) p.totalDays = 28;
+        // Sync leader offDays
+        p.staff.forEach(st => {
+          if((st.role === 'manager' || st.role === 'supervisor') && st.offDays === undefined){
+            st.offDays = (p.totalDays || 28) - (st.desiredDays || 20);
+            if(st.offDays < 0) st.offDays = 8;
+          }
+        });
         return p;
       }
     }
@@ -213,7 +223,7 @@ function getWeekIndex(di){ return Math.floor(di/7); }
 function countWeekWorkDays(sid, weekIdx){
   let c = 0;
   const start = weekIdx * 7;
-  const end = Math.min(start + 7, 28);
+  const end = Math.min(start + 7, getTotalDays());
   for(let d = start; d < end; d++) if(isWorking(sid, d)) c++;
   return c;
 }
@@ -237,13 +247,15 @@ function addStaff(){
   const hasManager = state.staff.some(s => s.role === 'manager');
   const id = state.nextId++;
   const role = hasManager ? 'employee' : 'manager';
+  const total = getTotalDays();
   const newStaff = {
     id, name: `員工${id}`,
     role,
-    desiredDays: 16,
+    desiredDays: (role === 'manager' || role === 'supervisor') ? total - 8 : 16,
+    offDays: (role === 'manager' || role === 'supervisor') ? 8 : undefined,
     rule4: false, rule5: false, rule6: false, rule7: false, preferNight: false, avoidMorning: false,
     allowNightToMorning: false,
-    weeklyOff: [false,false,false,false,false,false,false] // 日一二三四五六
+    weeklyOff: [false,false,false,false,false,false,false]
   };
   if(role === 'employee'){
     newStaff.minDays = 12;
@@ -262,6 +274,50 @@ function removeStaff(id){
   delete state.assignments[id];
   delete state.exceptions[id];
   if(selectedStaffId === id) selectedStaffId = null;
+  saveState(); render();
+}
+
+function getTotalDays(){ return state.totalDays || 28; }
+
+function updateTotalDays(val){
+  state.totalDays = Math.max(7, Math.min(56, parseInt(val) || 28));
+  // Auto-update manager/supervisor offDays/desiredDays
+  state.staff.forEach(s => {
+    if(s.role === 'manager' || s.role === 'supervisor'){
+      syncLeaderDays(s);
+    }
+  });
+  saveState(); render();
+}
+
+function syncLeaderDays(person){
+  const total = getTotalDays();
+  const preOff = (state.dayOffs[person.id] || []).length;
+  if(!person.offDays && person.offDays !== 0) person.offDays = 8;
+  if(preOff > person.offDays) person.offDays = preOff;
+  person.desiredDays = total - person.offDays;
+  if(person.desiredDays < 0) person.desiredDays = 0;
+}
+
+function updateLeaderDays(id, field, value){
+  const s = state.staff.find(x => x.id === id);
+  if(!s) return;
+  const total = getTotalDays();
+  value = Math.max(0, Math.min(total, parseInt(value) || 0));
+  if(field === 'desiredDays'){
+    s.desiredDays = value;
+    s.offDays = total - value;
+  } else if(field === 'offDays'){
+    s.offDays = value;
+    s.desiredDays = total - value;
+  }
+  if(s.desiredDays < 0) s.desiredDays = 0;
+  if(s.offDays < 0) s.offDays = 0;
+  // Check if has assignments, offer re-schedule
+  const hasAssignments = state.assignments[id] && Object.keys(state.assignments[id]).length > 0;
+  if(hasAssignments && confirm('已有排班資料，是否要重新自動排班？')){
+    saveState(); runAutoSchedule(); return;
+  }
   saveState(); render();
 }
 
@@ -290,13 +346,13 @@ function updateStaff(id, field, value){
     // Only one manager
     state.staff.forEach(x => { if(x.role === 'manager') x.role = 'supervisor'; });
   }
-  if(field === 'desiredDays') value = Math.max(0, Math.min(28, parseInt(value)||0));
+  if(field === 'desiredDays') value = Math.max(0, Math.min(getTotalDays(), parseInt(value)||0));
   if(field === 'minDays'){
-    value = Math.max(0, Math.min(28, parseInt(value)||0));
-    if(value > (s.maxDays || 28)) value = s.maxDays || 28;
+    value = Math.max(0, Math.min(getTotalDays(), parseInt(value)||0));
+    if(value > (s.maxDays || getTotalDays())) value = s.maxDays || getTotalDays();
   }
   if(field === 'maxDays'){
-    value = Math.max(0, Math.min(28, parseInt(value)||0));
+    value = Math.max(0, Math.min(getTotalDays(), parseInt(value)||0));
     if(value < (s.minDays || 0)) value = s.minDays || 0;
   }
   s[field] = value;
@@ -396,7 +452,7 @@ function wouldExceedConsecutiveIfAdded(sid, di){
     if(isWorking(sid, d)) runBefore++; else break;
   }
   let runAfter = 0;
-  for(let d = di + 1; d < 28; d++){
+  for(let d = di + 1; d < getTotalDays(); d++){
     if(isWorking(sid, d)) runAfter++; else break;
   }
   return (runBefore + 1 + runAfter) > 6;
@@ -411,7 +467,7 @@ function violatesNightMorning(sid, di, shift){
   if(isShiftMorning(shift) && di > 0){
     if(isShiftEvening(getAssignment(sid, di-1)) && !hasException(sid, di)) return true;
   }
-  if(isShiftEvening(shift) && di < 27){
+  if(isShiftEvening(shift) && di < getTotalDays()-1){
     if(isShiftMorning(getAssignment(sid, di+1)) && !hasException(sid, di+1)) return true;
   }
   return false;
@@ -422,7 +478,7 @@ function checkRule5(sid){
   const person = getStaffById(sid);
   if(!person || !person.rule5) return true;
   let count = 0;
-  for(let d = 0; d < 28; d++){
+  for(let d = 0; d < getTotalDays(); d++){
     if(isWeekend(d) && !isWorking(sid, d)) count++;
   }
   return count >= 2;
@@ -430,7 +486,7 @@ function checkRule5(sid){
 
 function countFreeWeekendDays(sid){
   let count = 0;
-  for(let d = 0; d < 28; d++){
+  for(let d = 0; d < getTotalDays(); d++){
     if(isWeekend(d) && !isWorking(sid, d)) count++;
   }
   return count;
@@ -452,7 +508,7 @@ function runAutoSchedule(){
   state.staff.forEach(person => {
     if(!person.weeklyOff) return;
     const sid = person.id;
-    for(let d = 0; d < 28; d++){
+    for(let d = 0; d < getTotalDays(); d++){
       if(person.weeklyOff[getDow(d)] && !isWorking(sid, d)){
         setAssignment(sid, d, '休');
       }
@@ -463,7 +519,7 @@ function runAutoSchedule(){
   state.staff.forEach(person => {
     const sid = person.id;
     if(person.role === 'manager'){
-      for(let d = 0; d < 28; d++){
+      for(let d = 0; d < getTotalDays(); d++){
         const dow = getDow(d);
         if((dow === 0 || dow === 1) && !isDayOff(sid,d) && !isWorking(sid,d)){
           if(canAssignForAuto(sid,d,'早')) setAssignment(sid, d, '早');
@@ -476,12 +532,12 @@ function runAutoSchedule(){
   // Phase 2: Employees FIRST — each employee gets exactly 3 shifts per week
   const empList = state.staff.filter(p => p.role === 'employee');
   const minWeeklyEmpShifts = empList.length * 3;
-  for(let w = 0; w < 4; w++){
+  for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
     // First ensure each individual employee has exactly 3 shifts this week
     for(const person of empList){
       const sid = person.id;
       let myWeekShifts = 0;
-      for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+      for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++){
         if(isWorking(sid, d)) myWeekShifts++;
       }
       let safety = 0;
@@ -489,7 +545,7 @@ function runAutoSchedule(){
         safety++;
         let added = false;
         const days = [];
-        for(let d = w*7; d < (w+1)*7 && d < 28; d++) days.push(d);
+        for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++) days.push(d);
         // Shuffle for randomness
         days.sort(() => Math.random() - 0.5);
         for(const d of days){
@@ -523,7 +579,7 @@ function runAutoSchedule(){
     while(countWorkDays(sid) < person.desiredDays && retry1 < 200){
       retry1++;
       let placed = false;
-      const days = Array.from({length:28}, (_,i) => i).sort(() => Math.random() - 0.5);
+      const days = Array.from({length:getTotalDays()}, (_,i) => i).sort(() => Math.random() - 0.5);
       for(const d of days){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
         if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
@@ -545,7 +601,7 @@ function runAutoSchedule(){
     while(countWorkDays(sid) < person.desiredDays && retry2 < 200){
       retry2++;
       let placed = false;
-      const days = Array.from({length:28}, (_,i) => i).sort(() => Math.random() - 0.5);
+      const days = Array.from({length:getTotalDays()}, (_,i) => i).sort(() => Math.random() - 0.5);
       for(const d of days){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
         if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
@@ -553,7 +609,7 @@ function runAutoSchedule(){
         if(countWeekWorkDays(sid, getWeekIndex(d)) >= 5) continue;
         if(person.rule4 && isWeekend(d)){
           const dow = getDow(d);
-          if(dow === 6 && d+1 < 28 && isWorking(sid, d+1)) continue;
+          if(dow === 6 && d+1 < getTotalDays() && isWorking(sid, d+1)) continue;
           if(dow === 0 && d-1 >= 0 && isWorking(sid, d-1)) continue;
         }
         const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
@@ -573,7 +629,7 @@ function runAutoSchedule(){
     while(countWorkDays(sid) < person.desiredDays && retry3 < 200){
       retry3++;
       let placed = false;
-      const days = Array.from({length:28}, (_,i) => i).sort(() => Math.random() - 0.5);
+      const days = Array.from({length:getTotalDays()}, (_,i) => i).sort(() => Math.random() - 0.5);
       for(const d of days){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
         if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
@@ -581,7 +637,7 @@ function runAutoSchedule(){
         if(countWeekWorkDays(sid, getWeekIndex(d)) >= 5) continue;
         if(person.rule4 && isWeekend(d)){
           const dow = getDow(d);
-          if(dow === 6 && d+1 < 28 && isWorking(sid, d+1)) continue;
+          if(dow === 6 && d+1 < getTotalDays() && isWorking(sid, d+1)) continue;
           if(dow === 0 && d-1 >= 0 && isWorking(sid, d-1)) continue;
         }
         const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
@@ -614,7 +670,7 @@ function runAutoSchedule(){
       const maxTarget = person.maxDays !== undefined ? person.maxDays : 16;
       if(countWorkDays(sid) >= maxTarget) continue;
       const options = [];
-      for(let d = 0; d < 28; d++){
+      for(let d = 0; d < getTotalDays(); d++){
         if(isDayOff(sid,d) || isWorking(sid,d)) continue;
         const shifts = getAvailShifts(d);
         for(const shift of shifts){
@@ -645,7 +701,7 @@ function runAutoSchedule(){
       if(maxP.days - minP.days <= 2) break;
       // Try to move a shift from maxP to minP
       let swapped = false;
-      for(let d = 0; d < 28 && !swapped; d++){
+      for(let d = 0; d < getTotalDays() && !swapped; d++){
         if(!isWorking(maxP.id, d)) continue;
         const shift = getAssignment(maxP.id, d);
         if(isDayOff(minP.id, d) || isWorking(minP.id, d)) continue;
@@ -664,7 +720,7 @@ function runAutoSchedule(){
     }
   }
   // Ensure each day has at least one manager/supervisor working
-  for(let d = 0; d < 28; d++){
+  for(let d = 0; d < getTotalDays(); d++){
     let hasLeader = false;
     state.staff.forEach(p => {
       if((p.role === 'manager' || p.role === 'supervisor') && isWorking(p.id, d)) hasLeader = true;
@@ -715,7 +771,7 @@ function runAutoSchedule(){
   while(forceFillChanged && forceFillSafety < 500){
     forceFillSafety++;
     forceFillChanged = false;
-    for(let d = 0; d < 28; d++){
+    for(let d = 0; d < getTotalDays(); d++){
       const req = getDayReq(d);
       for(const shift of SHIFTS){
         if(!req[shift]) continue;
@@ -725,7 +781,7 @@ function runAutoSchedule(){
         const candidates = state.staff
           .filter(p => p.role === 'employee')
           .filter(p => {
-            const maxT = p.maxDays !== undefined ? p.maxDays : 28;
+            const maxT = p.maxDays !== undefined ? p.maxDays : getTotalDays();
             return !isDayOff(p.id, d) && !isWorking(p.id, d) && countWorkDays(p.id) < maxT && canAssignForAuto(p.id, d, shift);
           })
           .sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
@@ -752,10 +808,10 @@ function runAutoSchedule(){
   // Phase 6: Weekend swap for rule4 (六日必休一天) — try swapping weekend shift with same-week weekday
   state.staff.filter(p => p.rule4).forEach(person => {
     const sid = person.id;
-    for(let w = 0; w < 4; w++){
+    for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
       // Check if both Sat and Sun are working in this week
       let satDay = -1, sunDay = -1;
-      for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+      for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++){
         if(getDow(d) === 6 && isWorking(sid, d)) satDay = d;
         if(getDow(d) === 0 && isWorking(sid, d)) sunDay = d;
       }
@@ -766,7 +822,7 @@ function runAutoSchedule(){
       for(const weDay of weekendDays){
         const weShift = getAssignment(sid, weDay);
         // Find a weekday in same week where person is NOT working, and someone else can cover the weekend
-        for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+        for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++){
           if(isWeekend(d)) continue;
           if(isWorking(sid, d)) continue; // person already working this weekday
           if(isDayOff(sid, d)) continue;
@@ -798,7 +854,7 @@ function runAutoSchedule(){
   // Phase 7: rule7 swap — people with "週二到四只上午班" swap their non-中 shift on Tue-Thu
   state.staff.filter(p => p.rule7).forEach(person => {
     const sid = person.id;
-    for(let d = 0; d < 28; d++){
+    for(let d = 0; d < getTotalDays(); d++){
       const dow = getDow(d);
       if(dow < 2 || dow > 4) continue; // Only Tue-Thu
       const myShift = getAssignment(sid, d);
@@ -810,7 +866,7 @@ function runAutoSchedule(){
         if(p2.rule7) return false; // They also need 中, can't swap
         // Check if partner can take myShift without violating hard rules
         if(myShift === '早' && d > 0 && getAssignment(p2.id, d-1) === '晚' && !p2.allowNightToMorning) return false;
-        if(myShift === '晚' && d < 27 && getAssignment(p2.id, d+1) === '早' && !p2.allowNightToMorning) return false;
+        if(myShift === '晚' && d < getTotalDays()-1 && getAssignment(p2.id, d+1) === '早' && !p2.allowNightToMorning) return false;
         // Check if person can take 中 without violating night-morning
         if(d > 0 && getAssignment(sid, d-1) === '晚' && !person.allowNightToMorning) return false; // 中 after 晚 is OK actually
         return true;
@@ -828,7 +884,7 @@ function runAutoSchedule(){
   // Phase 8: rule6 swap FIRST — people with "週一上晚班" MUST swap to 晚班 on Mondays
   state.staff.filter(p => p.rule6).forEach(person => {
     const sid = person.id;
-    for(let d = 0; d < 28; d++){
+    for(let d = 0; d < getTotalDays(); d++){
       if(getDow(d) !== 1) continue;
       const myShift = getAssignment(sid, d);
       if(!myShift || myShift === '休' || myShift === '晚') continue;
@@ -853,7 +909,7 @@ function runAutoSchedule(){
   // Phase 8.5: avoidMorning swap — people with "盡量不上早班", try to swap 早班 with non-早班
   state.staff.filter(p => p.avoidMorning).forEach(person => {
     const sid = person.id;
-    for(let d = 0; d < 28; d++){
+    for(let d = 0; d < getTotalDays(); d++){
       const myShift = getAssignment(sid, d);
       if(myShift !== '早') continue;
       // Find someone on this day with non-早班 who can swap
@@ -864,9 +920,9 @@ function runAutoSchedule(){
         if(p2.avoidMorning) return false; // Don't swap with another avoidMorning person
         // Check if p2 can take 早 without violating night-morning
         if(!p2.allowNightToMorning && d > 0 && getAssignment(p2.id, d-1) === '晚') return false;
-        if(!p2.allowNightToMorning && d < 27 && getAssignment(p2.id, d+1) === '早') return false;
+        if(!p2.allowNightToMorning && d < getTotalDays()-1 && getAssignment(p2.id, d+1) === '早') return false;
         // Check if person can take p2's shift without violating night-morning
-        if(!person.allowNightToMorning && s2 === '晚' && d < 27 && getAssignment(sid, d+1) === '早') return false;
+        if(!person.allowNightToMorning && s2 === '晚' && d < getTotalDays()-1 && getAssignment(sid, d+1) === '早') return false;
         if(!person.allowNightToMorning && s2 === '晚'){} // 晚 after anything is fine for prev day
         // Check rule6: don't take 晚 from rule6 person on Monday
         if(p2.rule6 && getDow(d) === 1 && s2 === '晚') return false;
@@ -888,7 +944,7 @@ function runAutoSchedule(){
   // Phase 9: preferNight swap — people with "優先晚班", skip rule6 holders
   state.staff.filter(p => p.preferNight).forEach(person => {
     const sid = person.id;
-    for(let d = 0; d < 28; d++){
+    for(let d = 0; d < getTotalDays(); d++){
       const myShift = getAssignment(sid, d);
       if(!myShift || myShift === '休' || myShift === '晚') continue;
       const swapPartner = state.staff.find(p2 => {
@@ -897,7 +953,7 @@ function runAutoSchedule(){
         if(p2.preferNight) return false;
         if(p2.rule6 && getDow(d) === 1) return false; // Don't take from rule6 on Monday
         if(myShift === '早' && d > 0 && getAssignment(p2.id, d-1) === '晚' && !p2.allowNightToMorning) return false;
-        if(d < 27 && getAssignment(sid, d+1) === '早' && !person.allowNightToMorning) return false;
+        if(d < getTotalDays()-1 && getAssignment(sid, d+1) === '早' && !person.allowNightToMorning) return false;
         return true;
       });
       if(swapPartner){
@@ -914,7 +970,7 @@ function runAutoSchedule(){
     let fixed = false;
     state.staff.forEach(person => {
       const sid = person.id;
-      for(let d = 1; d < 28; d++){
+      for(let d = 1; d < getTotalDays(); d++){
         // Fix night-morning violation
         if(!person.allowNightToMorning && getAssignment(sid, d) === '早' && getAssignment(sid, d-1) === '晚'){
           // Try swap this 早 with someone else's non-早 on same day
@@ -938,7 +994,7 @@ function runAutoSchedule(){
       }
       // Fix consecutive > 6
       let run = 0;
-      for(let d = 0; d < 28; d++){
+      for(let d = 0; d < getTotalDays(); d++){
         if(isWorking(sid, d)){ run++; }
         else { run = 0; continue; }
         if(run > 6){
@@ -951,7 +1007,7 @@ function runAutoSchedule(){
       }
       // Fix rule4: consecutive Sat-Sun both working
       if(person.rule4){
-        for(let d = 0; d < 27; d++){
+        for(let d = 0; d < getTotalDays()-1; d++){
           if(getDow(d) === 6 && isWorking(sid, d) && isWorking(sid, d+1)){
             // Try swap Sunday with someone who's off Sunday
             const sundayShift = getAssignment(sid, d+1);
@@ -999,7 +1055,7 @@ function runAutoSchedule(){
   // Fill ALL remaining unassigned days with "休" (red label) for every person
   state.staff.forEach(person => {
     const sid = person.id;
-    for(let d = 0; d < 28; d++){
+    for(let d = 0; d < getTotalDays(); d++){
       if(!isWorking(sid, d) && !isDayOff(sid, d) && !getAssignment(sid, d)){
         setAssignment(sid, d, '休');
       }
@@ -1008,11 +1064,11 @@ function runAutoSchedule(){
 
   // Phase 10.5: Ensure each employee has ≥3 shifts per week (fill up if short)
   const empListFix = state.staff.filter(p => p.role === 'employee');
-  for(let w = 0; w < 4; w++){
+  for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
     for(const person of empListFix){
       const sid = person.id;
       let weekShifts = 0;
-      for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+      for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++){
         if(isWorking(sid, d)) weekShifts++;
       }
       let safety = 0;
@@ -1020,7 +1076,7 @@ function runAutoSchedule(){
         safety++;
         let added = false;
         const days = [];
-        for(let d = w*7; d < (w+1)*7 && d < 28; d++) days.push(d);
+        for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++) days.push(d);
         days.sort(() => Math.random() - 0.5);
         for(const d of days){
           if(isDayOff(sid,d) || isWorking(sid,d)) continue;
@@ -1042,7 +1098,7 @@ function runAutoSchedule(){
   }
 
   // Phase 11: Only when 2+ people on same shift, convert 早→早1/早2, 晚→晚1/晚2
-  for(let d = 0; d < 28; d++){
+  for(let d = 0; d < getTotalDays(); d++){
     const morningPeople = [];
     const eveningPeople = [];
     state.staff.forEach(p => {
@@ -1107,13 +1163,13 @@ function canAssignForAuto(sid, di, shift){
     if(shift === '早' && di > 0){
       if(getAssignment(sid, di-1) === '晚' && !hasException(sid, di)) return false;
     }
-    if(shift === '晚' && di < 27){
+    if(shift === '晚' && di < getTotalDays()-1){
       if(getAssignment(sid, di+1) === '早' && !hasException(sid, di+1)) return false;
     }
   }
   if(person.rule4 && isWeekend(di)){
     const dow = getDow(di);
-    if(dow === 6 && di + 1 < 28 && isWorking(sid, di + 1)) return false;
+    if(dow === 6 && di + 1 < getTotalDays() && isWorking(sid, di + 1)) return false;
     if(dow === 0 && di - 1 >= 0 && isWorking(sid, di - 1)) return false;
   }
   // Rule 5
@@ -1143,7 +1199,7 @@ function getSlotDifficulty(di, shift, excludeSid){
 
 function countWorkDays(sid){
   let c = 0;
-  for(let d = 0; d < 28; d++) if(isWorking(sid,d)) c++;
+  for(let d = 0; d < getTotalDays(); d++) if(isWorking(sid,d)) c++;
   return c;
 }
 
@@ -1161,19 +1217,19 @@ function validate(silent){
     const sid = person.id;
     // Check consecutive days
     let run = 0;
-    for(let d = 0; d < 28; d++){
+    for(let d = 0; d < getTotalDays(); d++){
       if(isWorking(sid,d)){ run++; if(run > 6) warnings.push({type:'error',msg:`${person.name}：第${d-5}~${d+1}天連續工作超過6天`}); }
       else run = 0;
     }
     // Check night-morning
-    for(let d = 1; d < 28; d++){
+    for(let d = 1; d < getTotalDays(); d++){
       if(isShiftMorning(getAssignment(sid,d)) && isShiftEvening(getAssignment(sid,d-1)) && !hasException(sid,d) && !person.allowNightToMorning){
         warnings.push({type:'error',msg:`${person.name}：第${d}天(${getDayLabel(d)})晚班後隔天排早班`});
       }
     }
     // Manager Sunday morning (any 早 OK), Monday must be 早1
     if(person.role === 'manager'){
-      for(let d = 0; d < 28; d++){
+      for(let d = 0; d < getTotalDays(); d++){
         const dow = getDow(d);
         const a = getAssignment(sid, d);
         if(dow === 0 && !isDayOff(sid,d) && isWorking(sid,d) && !isShiftMorning(a)){
@@ -1190,7 +1246,7 @@ function validate(silent){
     }
     // Rule 4: consecutive Sat-Sun cannot both work
     if(person.rule4){
-      for(let d = 0; d < 27; d++){
+      for(let d = 0; d < getTotalDays()-1; d++){
         if(getDow(d) === 6 && isWorking(sid, d) && isWorking(sid, d+1)){
           warnings.push({type:'error',msg:`${person.name}：${getDayLabel(d)}(六)和${getDayLabel(d+1)}(日)連續上班（違反六日擇一休）`});
         }
@@ -1199,12 +1255,12 @@ function validate(silent){
     // Rule 5
     if(person.rule5){
       if(countFreeWeekendDays(sid) < 2){
-        warnings.push({type:'error',msg:`${person.name}：28天內週六日休息不足2天`});
+        warnings.push({type:'error',msg:`${person.name}：${getTotalDays()}天內週六日休息不足2天`});
       }
     }
     // Rule 6: Monday evening
     if(person.rule6){
-      for(let d = 0; d < 28; d++){
+      for(let d = 0; d < getTotalDays(); d++){
         if(getDow(d) === 1 && isWorking(sid,d) && !isShiftEvening(getAssignment(sid,d)) && !isDayOff(sid,d)){
           warnings.push({type:'error',msg:`${person.name}：${getDayLabel(d)}(一) 未排晚班（違反週一上晚班規定）`});
         }
@@ -1212,7 +1268,7 @@ function validate(silent){
     }
     // Rule 7: Tue-Thu morning only
     if(person.rule7){
-      for(let d = 0; d < 28; d++){
+      for(let d = 0; d < getTotalDays(); d++){
         const dow = getDow(d);
         if(dow >= 2 && dow <= 4 && isWorking(sid,d) && getAssignment(sid,d) !== '中' && !isDayOff(sid,d)){
           warnings.push({type:'error',msg:`${person.name}：${getDayLabel(d)}(${DOW_NAMES[dow]}) 非中班（違反週二到四只上午班規定）`});
@@ -1221,7 +1277,7 @@ function validate(silent){
     }
     // Manager/supervisor: max 5 days per week
     if(person.role === 'manager' || person.role === 'supervisor'){
-      for(let w = 0; w < 4; w++){
+      for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
         const weekDays = countWeekWorkDays(sid, w);
         if(weekDays > 5){
           warnings.push({type:'error',msg:`${person.name}（${ROLE_LABEL[person.role]}）：第${w+1}週上班${weekDays}天，超過5天上限`});
@@ -1248,10 +1304,10 @@ function validate(silent){
 
   // Check: each employee must have at least 3 shifts per week (Mon-Sun)
   const valEmpList = state.staff.filter(s => s.role === 'employee');
-  for(let w = 0; w < 4; w++){
+  for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
     valEmpList.forEach(p => {
       let weekShifts = 0;
-      for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+      for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++){
         if(isWorking(p.id, d)) weekShifts++;
       }
       if(weekShifts > 0 && weekShifts < 3){
@@ -1262,7 +1318,7 @@ function validate(silent){
 
   // Check: all daily shifts must be fully staffed (100 slots total)
   let totalSlots = 0, filledSlots = 0;
-  for(let d = 0; d < 28; d++){
+  for(let d = 0; d < getTotalDays(); d++){
     const req = getDayReq(d);
     for(const shift of SHIFTS){
       if(!req[shift]) continue;
@@ -1276,7 +1332,7 @@ function validate(silent){
   }
 
   // Check: each day must have at least one manager or supervisor
-  for(let d = 0; d < 28; d++){
+  for(let d = 0; d < getTotalDays(); d++){
     let hasLeader = false;
     state.staff.forEach(p => {
       if((p.role === 'manager' || p.role === 'supervisor') && isWorking(p.id, d)) hasLeader = true;
@@ -1287,7 +1343,7 @@ function validate(silent){
   }
 
   // Check: each day must have more than 1 person working
-  for(let d = 0; d < 28; d++){
+  for(let d = 0; d < getTotalDays(); d++){
     let totalWorking = 0;
     state.staff.forEach(p => { if(isWorking(p.id, d)) totalWorking++; });
     if(totalWorking === 1){
@@ -1326,7 +1382,7 @@ function renderSidebar(){
       const targetDays = person.desiredDays;
       const worked = countWorkDays(person.id);
       let shiftCounts = {早:0,中:0,晚:0};
-      for(let d=0;d<28;d++){
+      for(let d=0;d<getTotalDays();d++){
         const a = getAssignment(person.id,d);
         if(a && a !== '休') shiftCounts[a]++;
       }
@@ -1352,8 +1408,11 @@ function renderSidebar(){
             <span>天</span>
           </div>` : `
           <div class="days-input">
-            <span>目標天數（必須剛好）：</span>
-            <input type="number" min="0" max="28" value="${person.desiredDays}" onchange="updateStaff(${person.id},'desiredDays',this.value)" onclick="event.stopPropagation()">
+            <span>目標</span>
+            <input type="number" min="0" max="${getTotalDays()}" value="${person.desiredDays}" onchange="updateLeaderDays(${person.id},'desiredDays',this.value)" onclick="event.stopPropagation()" style="width:42px">
+            <span>天 放假</span>
+            <input type="number" min="0" max="${getTotalDays()}" value="${person.offDays || 8}" onchange="updateLeaderDays(${person.id},'offDays',this.value)" onclick="event.stopPropagation()" style="width:42px">
+            <span>天</span>
           </div>`}
           <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule4?'checked':''} onchange="updateStaff(${person.id},'rule4',this.checked)"> 六日擇一休（不連續上班）</label>
           <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule5?'checked':''} onchange="updateStaff(${person.id},'rule5',this.checked)"> 至少休兩天週六或週日</label>
@@ -1372,7 +1431,7 @@ function renderSidebar(){
           <span style="color:var(--morning)">早${shiftCounts['早']}</span>
           <span style="color:var(--afternoon)">中${shiftCounts['中']}</span>
           <span style="color:var(--evening)">晚${shiftCounts['晚']}</span>
-          <span style="color:var(--off)">休${28 - worked}</span>
+          <span style="color:var(--off)">休${getTotalDays() - worked}</span>
         </div>
       </div>`;
     });
@@ -1397,7 +1456,7 @@ function renderMain(){
 
   // Schedule tables — one per week (W1-W4)
   const DOW_LABELS = ['一','二','三','四','五','六','日'];
-  for(let w = 0; w < 4; w++){
+  for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
     const wStart = w * 7;
     html += `<div class="schedule-wrapper" style="margin-bottom:16px">`;
     html += `<table class="schedule"><thead><tr>`;
@@ -1468,7 +1527,7 @@ function renderMain(){
       : p.desiredDays;
     const worked = countWorkDays(p.id);
     let sc = {早:0,中:0,晚:0};
-    for(let d=0;d<28;d++){
+    for(let d=0;d<getTotalDays();d++){
       const a=getAssignment(p.id,d);
       if(a && a !== '休'){
         if(a.startsWith('早')) sc['早']++;
@@ -1476,7 +1535,7 @@ function renderMain(){
         else if(a === '中') sc['中']++;
       }
     }
-    const offCount = 28 - worked;
+    const offCount = getTotalDays() - worked;
     let cls = '';
     if(p.role === 'employee'){
       const minD = p.minDays !== undefined ? p.minDays : 12;
@@ -1495,7 +1554,7 @@ function renderMain(){
   // Daily coverage
   html += `<div class="summary-card"><h3>每日班次覆蓋</h3><div style="max-height:200px;overflow-y:auto"><table>
     <tr><th>日期</th><th>星期</th><th>早班</th><th>中班</th><th>晚班</th><th>狀態</th></tr>`;
-  for(let d = 0; d < 28; d++){
+  for(let d = 0; d < getTotalDays(); d++){
     const req = getDayReq(d);
     const dow = getDow(d);
     let ok = true;
@@ -1611,14 +1670,14 @@ function checkRuleViolationsForManual(sid, di, shift){
     if(shift === '早' && di > 0 && getAssignment(sid, di-1) === '晚' && !hasException(sid, di)){
       return `${person.name}：違反晚班接早班規定（前一天是晚班）`;
     }
-    if(shift === '晚' && di < 27 && getAssignment(sid, di+1) === '早' && !hasException(sid, di+1)){
+    if(shift === '晚' && di < getTotalDays()-1 && getAssignment(sid, di+1) === '早' && !hasException(sid, di+1)){
       return `${person.name}：違反晚班接早班規定（隔天是早班）`;
     }
   }
   // Rule 4: consecutive Sat-Sun cannot both work
   if(person.rule4 && isWeekend(di)){
     const dow = getDow(di);
-    if(dow === 6 && di + 1 < 28 && isWorking(sid, di + 1)){
+    if(dow === 6 && di + 1 < getTotalDays() && isWorking(sid, di + 1)){
       return `${person.name}：違反「六日擇一休」（週六日不能連續上班）`;
     }
     if(dow === 0 && di - 1 >= 0 && isWorking(sid, di - 1)){
@@ -1712,12 +1771,12 @@ function exportSchedule(){
   let csv = '';
   const DOW_LABELS = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
   
-  for(let w = 0; w < 4; w++){
+  for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
     // Week header
     csv += `W${w+1},`;
     for(let wd = 0; wd < 7; wd++){
       const d = w * 7 + wd;
-      if(d < 28) csv += `${DOW_LABELS[wd]} ${getDayLabel(d)}`;
+      if(d < getTotalDays()) csv += `${DOW_LABELS[wd]} ${getDayLabel(d)}`;
       if(wd < 6) csv += ',';
     }
     csv += '\n';
@@ -1727,7 +1786,7 @@ function exportSchedule(){
       csv += `${p.name},`;
       for(let wd = 0; wd < 7; wd++){
         const d = w * 7 + wd;
-        if(d < 28){
+        if(d < getTotalDays()){
           if(isDayOff(p.id, d)){
             csv += '休';
           } else {
@@ -1796,6 +1855,7 @@ function onDrop(e, sid, di){
 function init(){
   state = loadState() || getDefaultState();
   document.getElementById('start-date').value = state.startDate;
+  document.getElementById('total-days').value = state.totalDays || 28;
   document.getElementById('start-date').addEventListener('change', function(){
     // Force start date to Monday
     const picked = new Date(this.value + 'T00:00:00');
