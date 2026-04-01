@@ -1690,7 +1690,7 @@ function onDrop(e, sid, di){
       clearAssignment(dragSid, dragDay, true);
       clearManualLock(dragSid, dragDay);
       setAssignment(sid, di, srcShift);
-      setManualLock(sid, di, srcShift);
+
     } else {
       // Swap two people's shifts on the same day
       if(violatesNightMorning(sid, di, srcShift)) { alert('互換失敗：會違反晚班接早班規定'); return; }
@@ -1700,7 +1700,7 @@ function onDrop(e, sid, di){
       setAssignment(dragSid, dragDay, dstShift);
       setAssignment(sid, di, srcShift);
 
-      setManualLock(sid, di, srcShift);
+
     }
   } else {
     // Different days — swap the two cells' assignments
@@ -1725,7 +1725,7 @@ function onDrop(e, sid, di){
       if(violatesNightMorning(sid, di, srcShift)) { setAssignment(dragSid, dragDay, origSrc); alert('互換失敗：會違反晚班接早班規定'); return; }
       clearManualLock(dragSid, dragDay);
       setAssignment(sid, di, srcShift);
-      setManualLock(sid, di, srcShift);
+
     }
   }
 
