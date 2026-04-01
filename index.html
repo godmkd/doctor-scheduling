@@ -164,7 +164,7 @@ function getDefaultState(){
   };
 }
 
-function fmt(d){ return d.toISOString().slice(0,10); }
+function fmt(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
 function loadState(){
   try {
@@ -1764,10 +1764,9 @@ function init(){
     const picked = new Date(this.value + 'T00:00:00');
     const dow = picked.getDay();
     if(dow !== 1){
-      // Adjust to previous Monday
       const diff = dow === 0 ? 6 : dow - 1;
       picked.setDate(picked.getDate() - diff);
-      this.value = picked.toISOString().slice(0,10);
+      this.value = fmt(picked);
     }
     state.startDate = this.value;
     saveState(); render();
