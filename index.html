@@ -1371,7 +1371,7 @@ function renderMain(){
       const req = getDayReq(d);
       const reqStr = SHIFTS.filter(s => req[s]>0).map(s => `${s}${req[s]}`).join(' ');
       html += `<th class="day-header${we}">
-        <div class="dow">星期${DOW_LABELS[wd]}</div>
+        <div class="dow">${DOW_NAMES[getDow(d)]}</div>
         <div class="date">${getDayLabel(d)}</div>
         <div class="req">${reqStr}</div>
       </th>`;
