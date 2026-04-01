@@ -126,6 +126,17 @@ thead th.col-name{z-index:5;background:#f8fafc}
     <button class="btn btn-danger" onclick="clearAllAssignments()">清除排班</button>
     <button class="btn btn-success" onclick="exportSchedule()">匯出</button>
   </div>
+  <div class="header-controls" style="margin-top:4px">
+    <span style="font-size:.8rem;opacity:.8">班次配置</span>
+    <span style="font-size:.75rem">週二~四：</span>
+    <label style="font-size:.75rem">早<input type="number" min="0" max="9" id="cfg-wd-m" style="width:32px;padding:2px;border-radius:4px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;text-align:center" onchange="updateShiftConfig()"></label>
+    <label style="font-size:.75rem">中<input type="number" min="0" max="9" id="cfg-wd-a" style="width:32px;padding:2px;border-radius:4px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;text-align:center" onchange="updateShiftConfig()"></label>
+    <label style="font-size:.75rem">晚<input type="number" min="0" max="9" id="cfg-wd-e" style="width:32px;padding:2px;border-radius:4px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;text-align:center" onchange="updateShiftConfig()"></label>
+    <span style="font-size:.75rem;margin-left:8px">週五~一：</span>
+    <label style="font-size:.75rem">早<input type="number" min="0" max="9" id="cfg-we-m" style="width:32px;padding:2px;border-radius:4px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;text-align:center" onchange="updateShiftConfig()"></label>
+    <label style="font-size:.75rem">中<input type="number" min="0" max="9" id="cfg-we-a" style="width:32px;padding:2px;border-radius:4px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;text-align:center" onchange="updateShiftConfig()"></label>
+    <label style="font-size:.75rem">晚<input type="number" min="0" max="9" id="cfg-we-e" style="width:32px;padding:2px;border-radius:4px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;text-align:center" onchange="updateShiftConfig()"></label>
+  </div>
 </header>
 <div class="content">
   <aside id="sidebar"></aside>
@@ -157,6 +168,10 @@ function getDefaultState(){
   return {
     startDate: fmt(d),
     totalDays: 28,
+    shiftConfig: {
+      weekday: {'早':1,'中':1,'晚':1},   // 週二~四
+      weekend: {'早':2,'中':0,'晚':2}    // 週五~一
+    },
     nextId: 1,
     staff: [],
     dayOffs: {},
@@ -188,6 +203,7 @@ function loadState(){
         });
         if(!p.manualLocks) p.manualLocks = {};
         if(!p.totalDays) p.totalDays = 28;
+        if(!p.shiftConfig) p.shiftConfig = {weekday:{'早':1,'中':1,'晚':1},weekend:{'早':2,'中':0,'晚':2}};
         // Sync leader offDays
         p.staff.forEach(st => {
           if((st.role === 'manager' || st.role === 'supervisor') && st.offDays === undefined){
@@ -230,9 +246,9 @@ function countWeekWorkDays(sid, weekIdx){
 
 function getDayReq(di){
   const dow = getDow(di);
-  // Tue(2)-Thu(4): 早1,中1,晚1  Fri(5)-Mon(1): 早2,晚2
-  if(dow >= 2 && dow <= 4) return {'早':1,'中':1,'晚':1};
-  return {'早':2,'中':0,'晚':2};
+  const cfg = state.shiftConfig || {weekday:{'早':1,'中':1,'晚':1},weekend:{'早':2,'中':0,'晚':2}};
+  if(dow >= 2 && dow <= 4) return {...cfg.weekday};
+  return {...cfg.weekend};
 }
 
 function getAvailShifts(di){
@@ -278,6 +294,27 @@ function removeStaff(id){
 }
 
 function getTotalDays(){ return state.totalDays || 28; }
+
+function updateShiftConfig(){
+  if(!state.shiftConfig) state.shiftConfig = {weekday:{'早':1,'中':1,'晚':1},weekend:{'早':2,'中':0,'晚':2}};
+  state.shiftConfig.weekday['早'] = parseInt(document.getElementById('cfg-wd-m').value) || 0;
+  state.shiftConfig.weekday['中'] = parseInt(document.getElementById('cfg-wd-a').value) || 0;
+  state.shiftConfig.weekday['晚'] = parseInt(document.getElementById('cfg-wd-e').value) || 0;
+  state.shiftConfig.weekend['早'] = parseInt(document.getElementById('cfg-we-m').value) || 0;
+  state.shiftConfig.weekend['中'] = parseInt(document.getElementById('cfg-we-a').value) || 0;
+  state.shiftConfig.weekend['晚'] = parseInt(document.getElementById('cfg-we-e').value) || 0;
+  saveState(); render();
+}
+
+function initShiftConfigUI(){
+  const cfg = state.shiftConfig || {weekday:{'早':1,'中':1,'晚':1},weekend:{'早':2,'中':0,'晚':2}};
+  document.getElementById('cfg-wd-m').value = cfg.weekday['早'];
+  document.getElementById('cfg-wd-a').value = cfg.weekday['中'];
+  document.getElementById('cfg-wd-e').value = cfg.weekday['晚'];
+  document.getElementById('cfg-we-m').value = cfg.weekend['早'];
+  document.getElementById('cfg-we-a').value = cfg.weekend['中'];
+  document.getElementById('cfg-we-e').value = cfg.weekend['晚'];
+}
 
 function updateTotalDays(val){
   state.totalDays = Math.max(7, Math.min(56, parseInt(val) || 28));
@@ -1856,6 +1893,7 @@ function init(){
   state = loadState() || getDefaultState();
   document.getElementById('start-date').value = state.startDate;
   document.getElementById('total-days').value = state.totalDays || 28;
+  initShiftConfigUI();
   document.getElementById('start-date').addEventListener('change', function(){
     // Force start date to Monday
     const picked = new Date(this.value + 'T00:00:00');
