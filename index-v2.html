@@ -1,0 +1,1884 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>排班系統</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f1f5f9;--card:#fff;--border:#e2e8f0;--text:#1e293b;--text2:#64748b;
+  --primary:#3b82f6;--primary-light:#dbeafe;
+  --morning:#3b82f6;--afternoon:#10b981;--evening:#8b5cf6;
+  --off:#ef4444;--off-light:#fee2e2;--exception:#f59e0b;
+  --danger:#ef4444;--success:#10b981;
+  --shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);
+  --shadow-lg:0 4px 6px rgba(0,0,0,.1),0 2px 4px rgba(0,0,0,.06);
+  --radius:8px;
+}
+body{font-family:'Noto Sans TC',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+button{font-family:inherit;cursor:pointer;border:none;background:none;font-size:inherit}
+input,select{font-family:inherit;font-size:inherit}
+
+header{background:linear-gradient(135deg,#1e40af,#7c3aed);color:#fff;padding:16px 24px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;box-shadow:var(--shadow-lg)}
+header h1{font-size:1.4rem;font-weight:700;white-space:nowrap}
+.header-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.header-controls label{font-size:.85rem;display:flex;align-items:center;gap:6px}
+.header-controls input[type="date"]{padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;font-size:.85rem}
+.header-controls input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1)}
+.btn{padding:8px 16px;border-radius:6px;font-weight:500;font-size:.85rem;transition:all .15s}
+.btn-primary{background:#fff;color:#1e40af}.btn-primary:hover{background:#e0e7ff}
+.btn-danger{background:rgba(239,68,68,.2);color:#fecaca}.btn-danger:hover{background:rgba(239,68,68,.4)}
+.btn-success{background:rgba(16,185,129,.2);color:#a7f3d0}.btn-success:hover{background:rgba(16,185,129,.4)}
+.btn-sm{padding:4px 10px;font-size:.8rem}
+.btn-outline{border:1px solid var(--border);background:var(--card);color:var(--text)}.btn-outline:hover{background:var(--bg)}
+.btn-icon{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;font-size:1rem}
+
+.content{display:flex;gap:0;min-height:calc(100vh - 64px)}
+
+aside{width:340px;min-width:340px;background:var(--card);border-right:1px solid var(--border);overflow-y:auto;max-height:calc(100vh - 64px);padding:16px}
+aside h2{font-size:1rem;font-weight:700;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.staff-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:10px;transition:all .15s}
+.staff-card:hover{box-shadow:var(--shadow)}
+.staff-card.selected{border-color:var(--primary);background:var(--primary-light)}
+.staff-header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.staff-header input[type="text"]{flex:1;padding:2px 6px;border:1px solid var(--border);border-radius:4px;font-size:.8rem;background:#fff;max-width:80px}
+.staff-header select{padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:.8rem;background:#fff}
+.staff-header .btn-icon{color:var(--danger);font-size:.9rem}
+.staff-header .btn-icon:hover{background:var(--off-light)}
+.staff-options{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--text2)}
+.staff-options label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.staff-options input[type="checkbox"]{accent-color:var(--primary)}
+.staff-options .days-input{display:flex;align-items:center;gap:6px}
+.staff-options .days-input input{width:50px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;text-align:center}
+.staff-stats{font-size:.75rem;color:var(--text2);margin-top:6px;display:flex;gap:8px;flex-wrap:wrap}
+.staff-stats span{background:var(--card);padding:1px 6px;border-radius:3px}
+
+main{flex:1;overflow:auto;max-height:calc(100vh - 64px);padding:16px}
+.schedule-wrapper{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--card);box-shadow:var(--shadow)}
+table.schedule{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
+table.schedule th,table.schedule td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);padding:0;text-align:center;vertical-align:middle;white-space:nowrap}
+table.schedule th:last-child,table.schedule td:last-child{border-right:none}
+
+.col-name{position:sticky;left:0;z-index:2;background:var(--card);min-width:100px;max-width:140px;padding:4px 8px !important;text-align:left !important;font-size:.8rem;font-weight:500}
+.col-name.corner{z-index:4}
+thead th{position:sticky;top:0;z-index:3;background:#f8fafc;font-size:.7rem;font-weight:500}
+thead th.col-name{z-index:5;background:#f8fafc}
+.day-header{padding:4px 2px !important;min-width:68px;line-height:1.3}
+.day-header .dow{font-weight:700;font-size:.75rem}
+.day-header .date{font-size:.65rem;color:var(--text2)}
+.day-header .req{font-size:.6rem;color:var(--text2);margin-top:1px}
+.weekend{background:#fef3c7 !important}
+.role-row td,.role-row th{background:#e2e8f0 !important;font-size:.75rem;font-weight:700;padding:4px 8px !important;text-align:left !important;color:var(--text2)}
+
+.cell{min-width:68px;height:36px;cursor:pointer;position:relative;transition:background .1s}
+.cell:hover{background:#f0f4ff}
+.cell.day-off{background:var(--off-light) !important}
+.cell .badge{display:inline-block;padding:1px 8px;border-radius:4px;font-size:.7rem;font-weight:600;color:#fff}
+.badge-早{background:var(--morning)}.badge-早1{background:var(--morning)}.badge-早2{background:#2563eb}.badge-中{background:var(--afternoon)}.badge-晚{background:var(--evening)}.badge-晚1{background:var(--evening)}.badge-晚2{background:#6d28d9}
+.badge-休{background:var(--off);font-size:.65rem}
+.cell .exception-mark{position:absolute;top:1px;right:2px;font-size:.55rem;color:var(--exception);font-weight:700}
+.cell[draggable="true"]{cursor:grab}
+.cell[draggable="true"]:active{cursor:grabbing}
+.cell.drag-over{background:#dbeafe !important;outline:2px dashed var(--primary);outline-offset:-2px}
+
+.stats-row td{background:#f8fafc !important;font-size:.7rem;font-weight:600;padding:4px 2px !important;color:var(--text2)}
+.stats-row .col-name{font-weight:700;color:var(--text)}
+.stat-ok{color:var(--success)}.stat-warn{color:var(--danger);font-weight:700}
+
+.summary-cols{display:flex;gap:16px;margin-top:16px;flex-wrap:wrap}
+.summary-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;box-shadow:var(--shadow);flex:1;min-width:260px}
+.summary-card h3{font-size:.85rem;font-weight:700;margin-bottom:8px;color:var(--text2)}
+.summary-card table{width:100%;font-size:.75rem;border-collapse:collapse}
+.summary-card td,.summary-card th{padding:3px 6px;border-bottom:1px solid var(--border);text-align:center}
+.summary-card th{background:#f8fafc;font-weight:600}
+
+.warnings{margin-top:16px}
+.warning-item{background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:.8rem;color:#92400e;display:flex;align-items:center;gap:8px}
+.warning-item::before{content:"⚠";font-size:1rem}
+.error-item{background:#fee2e2;border-color:#f87171;color:#991b1b}
+.error-item::before{content:"✕"}
+
+#cell-menu{position:fixed;z-index:100;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:4px;min-width:120px;display:none}
+#cell-menu.show{display:block}
+#cell-menu .menu-item{display:block;width:100%;text-align:left;padding:6px 12px;border-radius:4px;font-size:.8rem;font-weight:500;transition:background .1s}
+#cell-menu .menu-item:hover{background:var(--bg)}
+#cell-menu .menu-divider{height:1px;background:var(--border);margin:4px 0}
+
+.legend{display:flex;gap:12px;margin-bottom:12px;font-size:.75rem;align-items:center;flex-wrap:wrap;color:var(--text2)}
+.legend-item{display:flex;align-items:center;gap:4px}
+.legend-dot{width:12px;height:12px;border-radius:3px}
+
+@media(max-width:900px){
+  .content{flex-direction:column}
+  aside{width:100%;min-width:0;max-height:none;border-right:none;border-bottom:1px solid var(--border)}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>排班系統</h1>
+  <div class="header-controls">
+    <label>起始日期 <input type="date" id="start-date"></label>
+    <label>排班總天數 <input type="number" id="total-days" min="7" max="56" value="28" style="width:50px;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;font-size:.85rem" onchange="updateTotalDays(this.value)"></label>
+    <button class="btn btn-primary" onclick="runAutoSchedule()">自動排班</button>
+    <button class="btn btn-danger" onclick="clearAllAssignments()">清除排班</button>
+    <button class="btn btn-success" onclick="exportSchedule()">匯出</button>
+  </div>
+</header>
+<div class="content">
+  <aside id="sidebar"></aside>
+  <main id="main-area"></main>
+</div>
+<div id="cell-menu"></div>
+
+<script>
+// ===== CONSTANTS =====
+const SHIFTS = ['早','中','晚'];
+const SHIFT_COLORS = {'早':'morning','中':'afternoon','晚':'evening'};
+const ROLES = [{key:'manager',label:'經理'},{key:'supervisor',label:'主任'},{key:'employee',label:'員工'}];
+const ROLE_LABEL = {manager:'經理',supervisor:'主任',employee:'員工'};
+const DOW_NAMES = ['日','一','二','三','四','五','六'];
+const STORAGE_KEY = 'shift_scheduler_state';
+
+// ===== STATE =====
+let state = null;
+let selectedStaffId = null;
+let menuOpen = false;
+
+function getDefaultState(){
+  const today = new Date();
+  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  // Start next Monday
+  const day = d.getDay();
+  const diff = (day === 0 ? 1 : 8 - day);
+  d.setDate(d.getDate() + diff);
+  return {
+    startDate: fmt(d),
+    totalDays: 28,
+    nextId: 1,
+    staff: [],
+    dayOffs: {},
+    assignments: {},
+    manualLocks: {},
+    exceptions: {}
+  };
+}
+
+function fmt(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+function loadState(){
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    if(s){
+      const p = JSON.parse(s);
+      if(p && p.staff){
+        // Backward compat: ensure new fields exist
+        p.staff.forEach(st => {
+          if(st.role === 'employee'){
+            if(st.minDays === undefined) st.minDays = 12;
+            if(st.maxDays === undefined) st.maxDays = st.desiredDays || 16;
+          }
+          if(st.rule7 === undefined) st.rule7 = false;
+          if(st.preferNight === undefined) st.preferNight = false;
+          if(st.avoidMorning === undefined) st.avoidMorning = false;
+          if(st.allowNightToMorning === undefined) st.allowNightToMorning = false;
+          if(!st.weeklyOff) st.weeklyOff = [false,false,false,false,false,false,false];
+        });
+        if(!p.manualLocks) p.manualLocks = {};
+        if(!p.totalDays) p.totalDays = 28;
+        // Sync leader offDays
+        p.staff.forEach(st => {
+          if((st.role === 'manager' || st.role === 'supervisor') && st.offDays === undefined){
+            st.offDays = (p.totalDays || 28) - (st.desiredDays || 20);
+            if(st.offDays < 0) st.offDays = 8;
+          }
+        });
+        return p;
+      }
+    }
+  } catch(e){}
+  return null;
+}
+
+function saveState(){
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e){}
+}
+
+// ===== DATE UTILS =====
+function getStartDate(){ return new Date(state.startDate + 'T00:00:00'); }
+function getDayDate(di){
+  const d = getStartDate();
+  d.setDate(d.getDate() + di);
+  return d;
+}
+function getDow(di){ return getDayDate(di).getDay(); }
+function getDayLabel(di){
+  const d = getDayDate(di);
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+function getWeekIndex(di){ return Math.floor(di/7); }
+
+function countWeekWorkDays(sid, weekIdx){
+  let c = 0;
+  const start = weekIdx * 7;
+  const end = Math.min(start + 7, getTotalDays());
+  for(let d = start; d < end; d++) if(isWorking(sid, d)) c++;
+  return c;
+}
+
+function getDayReq(di){
+  const dow = getDow(di);
+  // Tue(2)-Thu(4): 早1,中1,晚1  Fri(5)-Mon(1): 早2,晚2
+  if(dow >= 2 && dow <= 4) return {'早':1,'中':1,'晚':1};
+  return {'早':2,'中':0,'晚':2};
+}
+
+function getAvailShifts(di){
+  const req = getDayReq(di);
+  return SHIFTS.filter(s => req[s] > 0);
+}
+
+function isWeekend(di){ const dow = getDow(di); return dow === 0 || dow === 6; }
+
+// ===== STAFF =====
+function addStaff(){
+  const hasManager = state.staff.some(s => s.role === 'manager');
+  const id = state.nextId++;
+  const role = hasManager ? 'employee' : 'manager';
+  const total = getTotalDays();
+  const newStaff = {
+    id, name: `員工${id}`,
+    role,
+    desiredDays: (role === 'manager' || role === 'supervisor') ? total - 8 : 16,
+    offDays: (role === 'manager' || role === 'supervisor') ? 8 : undefined,
+    rule4: false, rule5: false, rule6: false, rule7: false, preferNight: false, avoidMorning: false,
+    allowNightToMorning: false,
+    weeklyOff: [false,false,false,false,false,false,false]
+  };
+  if(role === 'employee'){
+    newStaff.minDays = 12;
+    newStaff.maxDays = 16;
+  }
+  state.staff.push(newStaff);
+  state.dayOffs[id] = [];
+  state.assignments[id] = {};
+  state.exceptions[id] = [];
+  saveState(); render();
+}
+
+function removeStaff(id){
+  state.staff = state.staff.filter(s => s.id !== id);
+  delete state.dayOffs[id];
+  delete state.assignments[id];
+  delete state.exceptions[id];
+  if(selectedStaffId === id) selectedStaffId = null;
+  saveState(); render();
+}
+
+function getTotalDays(){ return state.totalDays || 28; }
+
+function updateTotalDays(val){
+  state.totalDays = Math.max(7, Math.min(56, parseInt(val) || 28));
+  // Auto-update manager/supervisor offDays/desiredDays
+  state.staff.forEach(s => {
+    if(s.role === 'manager' || s.role === 'supervisor'){
+      syncLeaderDays(s);
+    }
+  });
+  saveState(); render();
+}
+
+function syncLeaderDays(person){
+  const total = getTotalDays();
+  const preOff = (state.dayOffs[person.id] || []).length;
+  if(!person.offDays && person.offDays !== 0) person.offDays = 8;
+  if(preOff > person.offDays) person.offDays = preOff;
+  person.desiredDays = total - person.offDays;
+  if(person.desiredDays < 0) person.desiredDays = 0;
+}
+
+function updateLeaderDays(id, field, value){
+  const s = state.staff.find(x => x.id === id);
+  if(!s) return;
+  const total = getTotalDays();
+  value = Math.max(0, Math.min(total, parseInt(value) || 0));
+  if(field === 'desiredDays'){
+    s.desiredDays = value;
+    s.offDays = total - value;
+  } else if(field === 'offDays'){
+    s.offDays = value;
+    s.desiredDays = total - value;
+  }
+  if(s.desiredDays < 0) s.desiredDays = 0;
+  if(s.offDays < 0) s.offDays = 0;
+  // Check if has assignments, offer re-schedule
+  const hasAssignments = state.assignments[id] && Object.keys(state.assignments[id]).length > 0;
+  if(hasAssignments && confirm('已有排班資料，是否要重新自動排班？')){
+    saveState(); runAutoSchedule(); return;
+  }
+  saveState(); render();
+}
+
+function toggleSidebar(){
+  state._sidebarCollapsed = !state._sidebarCollapsed;
+  renderSidebar();
+}
+
+function toggleWeeklyOff(id, dowIndex, checked){
+  const s = state.staff.find(x => x.id === id);
+  if(!s) return;
+  if(!s.weeklyOff) s.weeklyOff = [false,false,false,false,false,false,false];
+  s.weeklyOff[dowIndex] = checked;
+  // If has assignments, offer to re-schedule
+  const hasAssignments = state.assignments[id] && Object.keys(state.assignments[id]).length > 0;
+  if(hasAssignments && confirm('已有排班資料，是否要重新自動排班？')){
+    saveState(); runAutoSchedule(); return;
+  }
+  saveState(); render();
+}
+
+function updateStaff(id, field, value){
+  const s = state.staff.find(x => x.id === id);
+  if(!s) return;
+  if(field === 'role' && value === 'manager'){
+    // Only one manager
+    state.staff.forEach(x => { if(x.role === 'manager') x.role = 'supervisor'; });
+  }
+  if(field === 'desiredDays') value = Math.max(0, Math.min(getTotalDays(), parseInt(value)||0));
+  if(field === 'minDays'){
+    value = Math.max(0, Math.min(getTotalDays(), parseInt(value)||0));
+    if(value > (s.maxDays || getTotalDays())) value = s.maxDays || getTotalDays();
+  }
+  if(field === 'maxDays'){
+    value = Math.max(0, Math.min(getTotalDays(), parseInt(value)||0));
+    if(value < (s.minDays || 0)) value = s.minDays || 0;
+  }
+  s[field] = value;
+  if(field === 'role'){
+    // When role changes, ensure minDays/maxDays exist for employees, remove for non-employees
+    if(value === 'employee'){
+      if(s.minDays === undefined) s.minDays = 12;
+      if(s.maxDays === undefined) s.maxDays = s.desiredDays || 16;
+    }
+  }
+  if(field === 'desiredDays' || field === 'minDays' || field === 'maxDays'){
+    const hasAssignments = state.assignments[id] && Object.keys(state.assignments[id]).length > 0;
+    if(hasAssignments){
+      if(confirm('已有排班資料，是否要重新自動排班？')){
+        saveState();
+        runAutoSchedule();
+        return;
+      }
+    }
+  }
+  saveState(); render();
+}
+
+function getStaffById(id){ return state.staff.find(s => s.id === id); }
+function getStaffByRole(role){ return state.staff.filter(s => s.role === role); }
+
+// ===== SCHEDULE DATA =====
+function getAssignment(sid, di){
+  return (state.assignments[sid] && state.assignments[sid][di]) || null;
+}
+function setAssignment(sid, di, shift){
+  if(!state.assignments[sid]) state.assignments[sid] = {};
+  state.assignments[sid][di] = shift;
+}
+function clearAssignment(sid, di, force){
+  if(!force && isManualLocked(sid, di)) return; // Don't clear manual locks
+  if(state.assignments[sid]) delete state.assignments[sid][di];
+}
+function isManualLocked(sid, di){
+  return state.manualLocks && state.manualLocks[sid] && state.manualLocks[sid][di];
+}
+function setManualLock(sid, di, shift){
+  if(!state.manualLocks) state.manualLocks = {};
+  if(!state.manualLocks[sid]) state.manualLocks[sid] = {};
+  state.manualLocks[sid][di] = shift;
+}
+function clearManualLock(sid, di){
+  if(state.manualLocks && state.manualLocks[sid]) delete state.manualLocks[sid][di];
+}
+function isDayOff(sid, di){
+  return (state.dayOffs[sid] || []).includes(di);
+}
+function toggleDayOff(sid, di){
+  if(!state.dayOffs[sid]) state.dayOffs[sid] = [];
+  const idx = state.dayOffs[sid].indexOf(di);
+  if(idx >= 0){ state.dayOffs[sid].splice(idx,1); }
+  else { state.dayOffs[sid].push(di); clearAssignment(sid, di); }
+}
+function hasException(sid, di){
+  return (state.exceptions[sid] || []).includes(di);
+}
+function toggleException(sid, di){
+  if(!state.exceptions[sid]) state.exceptions[sid] = [];
+  const idx = state.exceptions[sid].indexOf(di);
+  if(idx >= 0) state.exceptions[sid].splice(idx,1);
+  else state.exceptions[sid].push(di);
+}
+
+function getSlotCount(di, shift){
+  let count = 0;
+  state.staff.forEach(s => {
+    const a = getAssignment(s.id, di);
+    if(!a) return;
+    if(a === shift) { count++; return; }
+    // Count 早1/早2 as 早, 晚1/晚2 as 晚
+    if(shift === '早' && a.startsWith('早')) count++;
+    else if(shift === '晚' && a.startsWith('晚')) count++;
+  });
+  return count;
+}
+
+function slotAvailable(di, shift){
+  const req = getDayReq(di);
+  if(!req[shift]) return false;
+  return getSlotCount(di, shift) < req[shift];
+}
+
+// ===== CONSTRAINTS =====
+function isWorking(sid, di){
+  const a = getAssignment(sid, di);
+  return !!a && a !== '休';
+}
+
+function wouldExceedConsecutiveIfAdded(sid, di){
+  let runBefore = 0;
+  for(let d = di - 1; d >= 0; d--){
+    if(isWorking(sid, d)) runBefore++; else break;
+  }
+  let runAfter = 0;
+  for(let d = di + 1; d < getTotalDays(); d++){
+    if(isWorking(sid, d)) runAfter++; else break;
+  }
+  return (runBefore + 1 + runAfter) > 6;
+}
+
+function isShiftMorning(s){ return s === '早' || (s && s.startsWith('早')); }
+function isShiftEvening(s){ return s === '晚' || (s && s.startsWith('晚')); }
+
+function violatesNightMorning(sid, di, shift){
+  const person = getStaffById(sid);
+  if(person && person.allowNightToMorning) return false;
+  if(isShiftMorning(shift) && di > 0){
+    if(isShiftEvening(getAssignment(sid, di-1)) && !hasException(sid, di)) return true;
+  }
+  if(isShiftEvening(shift) && di < getTotalDays()-1){
+    if(isShiftMorning(getAssignment(sid, di+1)) && !hasException(sid, di+1)) return true;
+  }
+  return false;
+}
+
+function checkRule5(sid){
+  // Must have at least 2 Sat/Sun off in 28 days
+  const person = getStaffById(sid);
+  if(!person || !person.rule5) return true;
+  let count = 0;
+  for(let d = 0; d < getTotalDays(); d++){
+    if(isWeekend(d) && !isWorking(sid, d)) count++;
+  }
+  return count >= 2;
+}
+
+function countFreeWeekendDays(sid){
+  let count = 0;
+  for(let d = 0; d < getTotalDays(); d++){
+    if(isWeekend(d) && !isWorking(sid, d)) count++;
+  }
+  return count;
+}
+
+// ===== AUTO SCHEDULE =====
+function runAutoSchedule(){
+  // Clear only non-manual assignments (preserve manually locked shifts)
+  state.staff.forEach(s => {
+    const locked = state.manualLocks && state.manualLocks[s.id] ? {...state.manualLocks[s.id]} : {};
+    state.assignments[s.id] = {};
+    // Restore locked shifts
+    for(const di in locked){
+      state.assignments[s.id][di] = locked[di];
+    }
+  });
+
+  // Phase 0: Mark weekly fixed off days as 休
+  state.staff.forEach(person => {
+    if(!person.weeklyOff) return;
+    const sid = person.id;
+    for(let d = 0; d < getTotalDays(); d++){
+      if(person.weeklyOff[getDow(d)] && !isWorking(sid, d)){
+        setAssignment(sid, d, '休');
+      }
+    }
+  });
+
+  // Phase 1: Place mandatory shifts (manager Sunday/Monday morning, rule6 Monday evening)
+  state.staff.forEach(person => {
+    const sid = person.id;
+    if(person.role === 'manager'){
+      for(let d = 0; d < getTotalDays(); d++){
+        const dow = getDow(d);
+        if((dow === 0 || dow === 1) && !isDayOff(sid,d) && !isWorking(sid,d)){
+          if(canAssignForAuto(sid,d,'早')) setAssignment(sid, d, '早');
+        }
+      }
+    }
+    // rule6: handled by Phase 9 swap after scheduling
+  });
+
+  // Phase 2: Employees FIRST — each employee gets exactly 3 shifts per week
+  const empList = state.staff.filter(p => p.role === 'employee');
+  const minWeeklyEmpShifts = empList.length * 3;
+  for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
+    // First ensure each individual employee has exactly 3 shifts this week
+    for(const person of empList){
+      const sid = person.id;
+      let myWeekShifts = 0;
+      for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++){
+        if(isWorking(sid, d)) myWeekShifts++;
+      }
+      let safety = 0;
+      while(myWeekShifts < 3 && safety < 20){
+        safety++;
+        let added = false;
+        const days = [];
+        for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++) days.push(d);
+        // Shuffle for randomness
+        days.sort(() => Math.random() - 0.5);
+        for(const d of days){
+          if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+          if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
+          if(wouldExceedConsecutiveIfAdded(sid, d)) continue;
+          const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
+          for(const shift of shifts){
+            if(violatesNightMorning(sid, d, shift)) continue;
+            const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
+            if(needed <= 0) continue;
+            setAssignment(sid, d, shift);
+            myWeekShifts++; added = true; break;
+          }
+          if(added) break;
+        }
+        if(!added) break;
+      }
+    }
+    // (exactly 3 per employee per week — no more in this phase)
+  }
+
+  // Phase 3: Fill managers and supervisors to exact target
+  // Pass 1: fill open slots with rules
+  // Pass 2: fill any open day (no slot limit, no swap) — just add to shift
+  const leaders = state.staff.filter(s => s.role === 'manager' || s.role === 'supervisor');
+  for(const person of leaders){
+    const sid = person.id;
+    // Pass 1: round-robin with rules, only open slots
+    let retry1 = 0;
+    while(countWorkDays(sid) < person.desiredDays && retry1 < 200){
+      retry1++;
+      let placed = false;
+      const days = Array.from({length:getTotalDays()}, (_,i) => i).sort(() => Math.random() - 0.5);
+      for(const d of days){
+        if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+        if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
+        const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
+        for(const shift of shifts){
+          if(canAssignForAuto(sid, d, shift)){
+            const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
+            if(needed <= 0) continue;
+            setAssignment(sid, d, shift);
+            placed = true; break;
+          }
+        }
+        if(placed) break;
+      }
+      if(!placed) break;
+    }
+    // Pass 2: only hard rules (consecutive ≤6, night-morning, rule4, weekly≤5), skip canAssignForAuto soft rules
+    let retry2 = 0;
+    while(countWorkDays(sid) < person.desiredDays && retry2 < 200){
+      retry2++;
+      let placed = false;
+      const days = Array.from({length:getTotalDays()}, (_,i) => i).sort(() => Math.random() - 0.5);
+      for(const d of days){
+        if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+        if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
+        if(wouldExceedConsecutiveIfAdded(sid, d)) continue;
+        if(countWeekWorkDays(sid, getWeekIndex(d)) >= 5) continue;
+        if(person.rule4 && isWeekend(d)){
+          const dow = getDow(d);
+          if(dow === 6 && d+1 < getTotalDays() && isWorking(sid, d+1)) continue;
+          if(dow === 0 && d-1 >= 0 && isWorking(sid, d-1)) continue;
+        }
+        const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
+        for(const shift of shifts){
+          if(violatesNightMorning(sid, d, shift)) continue;
+          const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
+          if(needed <= 0) continue;
+          setAssignment(sid, d, shift);
+          placed = true; break;
+        }
+        if(placed) break;
+      }
+      if(!placed) break;
+    }
+    // Pass 3: still not at target — take employee's slot (they'll be re-filled in Phase 4)
+    let retry3 = 0;
+    while(countWorkDays(sid) < person.desiredDays && retry3 < 200){
+      retry3++;
+      let placed = false;
+      const days = Array.from({length:getTotalDays()}, (_,i) => i).sort(() => Math.random() - 0.5);
+      for(const d of days){
+        if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+        if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
+        if(wouldExceedConsecutiveIfAdded(sid, d)) continue;
+        if(countWeekWorkDays(sid, getWeekIndex(d)) >= 5) continue;
+        if(person.rule4 && isWeekend(d)){
+          const dow = getDow(d);
+          if(dow === 6 && d+1 < getTotalDays() && isWorking(sid, d+1)) continue;
+          if(dow === 0 && d-1 >= 0 && isWorking(sid, d-1)) continue;
+        }
+        const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
+        for(const shift of shifts){
+          if(violatesNightMorning(sid, d, shift)) continue;
+          const emp = state.staff.find(p => p.role === 'employee' && getAssignment(p.id, d) === shift);
+          if(emp){
+            clearAssignment(emp.id, d);
+            setAssignment(sid, d, shift);
+            placed = true; break;
+          }
+        }
+        if(placed) break;
+      }
+      if(!placed) break;
+    }
+  }
+
+  // Phase 4: Employees fill remaining open slots (round-robin, randomized)
+  const employees = state.staff.filter(s => s.role === 'employee');
+  let changed = true;
+  let safetyCounter = 0;
+  while(changed && safetyCounter < 2000){
+    safetyCounter++;
+    changed = false;
+    const sorted = [...employees].sort(() => Math.random() - 0.5);
+    sorted.sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
+    for(const person of sorted){
+      const sid = person.id;
+      const maxTarget = person.maxDays !== undefined ? person.maxDays : 16;
+      if(countWorkDays(sid) >= maxTarget) continue;
+      const options = [];
+      for(let d = 0; d < getTotalDays(); d++){
+        if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+        const shifts = getAvailShifts(d);
+        for(const shift of shifts){
+          if(canAssignForAuto(sid, d, shift)){
+            const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
+            if(needed <= 0) continue;
+            options.push({d, shift});
+          }
+        }
+      }
+      if(options.length === 0) continue;
+      const pick = options[Math.floor(Math.random() * options.length)];
+      setAssignment(sid, pick.d, pick.shift);
+      changed = true;
+      break;
+    }
+  }
+
+  // Phase 4: Balance check — if work day difference > 2 among employees only (not managers/supervisors)
+  const balanceRoles = ['employee'];
+  for(const role of balanceRoles){
+    const people = state.staff.filter(s => s.role === role);
+    if(people.length < 2) continue;
+    for(let iter = 0; iter < 50; iter++){
+      const counts = people.map(p => ({id:p.id, days:countWorkDays(p.id), target: p.role === 'employee' ? (p.maxDays !== undefined ? p.maxDays : 16) : p.desiredDays}));
+      counts.sort((a,b) => a.days - b.days);
+      const minP = counts[0], maxP = counts[counts.length-1];
+      if(maxP.days - minP.days <= 2) break;
+      // Try to move a shift from maxP to minP
+      let swapped = false;
+      for(let d = 0; d < getTotalDays() && !swapped; d++){
+        if(!isWorking(maxP.id, d)) continue;
+        const shift = getAssignment(maxP.id, d);
+        if(isDayOff(minP.id, d) || isWorking(minP.id, d)) continue;
+        // Temporarily remove max's assignment, check if min can take it
+        clearAssignment(maxP.id, d);
+        if(canAssignForAuto(minP.id, d, shift)){
+          setAssignment(minP.id, d, shift);
+          // Mark max's day as unassigned (already cleared)
+          swapped = true;
+        } else {
+          // Restore
+          setAssignment(maxP.id, d, shift);
+        }
+      }
+      if(!swapped) break;
+    }
+  }
+  // Ensure each day has at least one manager/supervisor working
+  for(let d = 0; d < getTotalDays(); d++){
+    let hasLeader = false;
+    state.staff.forEach(p => {
+      if((p.role === 'manager' || p.role === 'supervisor') && isWorking(p.id, d)) hasLeader = true;
+    });
+    if(!hasLeader){
+      // Try to assign a manager/supervisor to this day
+      const leaders = state.staff.filter(p => p.role === 'manager' || p.role === 'supervisor');
+      let placed = false;
+      for(const leader of leaders){
+        if(isDayOff(leader.id, d) || isWorking(leader.id, d)) continue;
+        const shifts = getAvailShifts(d);
+        for(const shift of shifts){
+          if(canAssignForAuto(leader.id, d, shift)){
+            setAssignment(leader.id, d, shift);
+            placed = true; break;
+          }
+        }
+        if(placed) break;
+      }
+      if(!placed){
+        // Try swapping: find an employee on this day and replace with a leader
+        for(const leader of leaders){
+          if(isDayOff(leader.id, d)) continue;
+          if(isWorking(leader.id, d)) continue;
+          // Find an employee working this day whose slot the leader can take
+          const employees = state.staff.filter(p => p.role === 'employee' && isWorking(p.id, d));
+          for(const emp of employees){
+            const empShift = getAssignment(emp.id, d);
+            // Temporarily remove employee, check if leader can take it
+            clearAssignment(emp.id, d);
+            if(canAssignForAuto(leader.id, d, empShift)){
+              setAssignment(leader.id, d, empShift);
+              placed = true; break;
+            } else {
+              // Restore
+              setAssignment(emp.id, d, empShift);
+            }
+          }
+          if(placed) break;
+        }
+      }
+    }
+  }
+
+  // Phase 5: Force fill ALL remaining empty slots — every day's required shifts must be filled
+  let forceFillChanged = true;
+  let forceFillSafety = 0;
+  while(forceFillChanged && forceFillSafety < 500){
+    forceFillSafety++;
+    forceFillChanged = false;
+    for(let d = 0; d < getTotalDays(); d++){
+      const req = getDayReq(d);
+      for(const shift of SHIFTS){
+        if(!req[shift]) continue;
+        const needed = req[shift] - getSlotCount(d, shift);
+        if(needed <= 0) continue;
+        // Find EMPLOYEE who can take this slot (managers/supervisors are done, don't touch)
+        const candidates = state.staff
+          .filter(p => p.role === 'employee')
+          .filter(p => {
+            const maxT = p.maxDays !== undefined ? p.maxDays : getTotalDays();
+            return !isDayOff(p.id, d) && !isWorking(p.id, d) && countWorkDays(p.id) < maxT && canAssignForAuto(p.id, d, shift);
+          })
+          .sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
+        if(candidates.length > 0){
+          const top = candidates.slice(0, Math.min(3, candidates.length));
+          const pick = top[Math.floor(Math.random() * top.length)];
+          setAssignment(pick.id, d, shift);
+          forceFillChanged = true;
+        } else {
+          // Try any employee regardless of maxDays — slots MUST be filled
+          const desperate = state.staff
+            .filter(p => p.role === 'employee')
+            .filter(p => !isDayOff(p.id, d) && !isWorking(p.id, d) && canAssignForAuto(p.id, d, shift))
+            .sort((a,b) => countWorkDays(a.id) - countWorkDays(b.id));
+          if(desperate.length > 0){
+            setAssignment(desperate[0].id, d, shift);
+            forceFillChanged = true;
+          }
+        }
+      }
+    }
+  }
+
+  // Phase 6: Weekend swap for rule4 (六日必休一天) — try swapping weekend shift with same-week weekday
+  state.staff.filter(p => p.rule4).forEach(person => {
+    const sid = person.id;
+    for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
+      // Check if both Sat and Sun are working in this week
+      let satDay = -1, sunDay = -1;
+      for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++){
+        if(getDow(d) === 6 && isWorking(sid, d)) satDay = d;
+        if(getDow(d) === 0 && isWorking(sid, d)) sunDay = d;
+      }
+      if(satDay === -1 || sunDay === -1) continue; // Already has a free weekend day
+      // Both Sat & Sun working — try to swap one with a weekday in same week
+      const weekendDays = [satDay, sunDay].sort(() => Math.random() - 0.5);
+      let swapped = false;
+      for(const weDay of weekendDays){
+        const weShift = getAssignment(sid, weDay);
+        // Find a weekday in same week where person is NOT working, and someone else can cover the weekend
+        for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++){
+          if(isWeekend(d)) continue;
+          if(isWorking(sid, d)) continue; // person already working this weekday
+          if(isDayOff(sid, d)) continue;
+          if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
+          // Check if person can work this weekday with the weekend shift type
+          const weekdayShifts = getAvailShifts(d);
+          if(!weekdayShifts.includes(weShift)) continue;
+          // Find someone who can take the weekend slot
+          const replacement = state.staff.find(p2 => {
+            if(p2.id === sid) return false;
+            if(isWorking(p2.id, weDay)) return false;
+            if(isDayOff(p2.id, weDay)) return false;
+            if(p2.weeklyOff && p2.weeklyOff[getDow(weDay)]) return false;
+            return canAssignForAuto(p2.id, weDay, weShift);
+          });
+          if(replacement){
+            // Do the swap: person moves from weekend to weekday, replacement takes weekend
+            clearAssignment(sid, weDay);
+            setAssignment(sid, d, weShift);
+            setAssignment(replacement.id, weDay, weShift);
+            swapped = true; break;
+          }
+        }
+        if(swapped) break;
+      }
+    }
+  });
+
+  // Phase 7: rule7 swap — people with "週二到四只上午班" swap their non-中 shift on Tue-Thu
+  state.staff.filter(p => p.rule7).forEach(person => {
+    const sid = person.id;
+    for(let d = 0; d < getTotalDays(); d++){
+      const dow = getDow(d);
+      if(dow < 2 || dow > 4) continue; // Only Tue-Thu
+      const myShift = getAssignment(sid, d);
+      if(!myShift || myShift === '休' || myShift === '中') continue; // Already 中 or not working
+      // Find someone on this day who has 中班 and can swap
+      const swapPartner = state.staff.find(p2 => {
+        if(p2.id === sid) return false;
+        if(getAssignment(p2.id, d) !== '中') return false;
+        if(p2.rule7) return false; // They also need 中, can't swap
+        // Check if partner can take myShift without violating hard rules
+        if(myShift === '早' && d > 0 && getAssignment(p2.id, d-1) === '晚' && !p2.allowNightToMorning) return false;
+        if(myShift === '晚' && d < getTotalDays()-1 && getAssignment(p2.id, d+1) === '早' && !p2.allowNightToMorning) return false;
+        // Check if person can take 中 without violating night-morning
+        if(d > 0 && getAssignment(sid, d-1) === '晚' && !person.allowNightToMorning) return false; // 中 after 晚 is OK actually
+        return true;
+      });
+      if(swapPartner){
+        const partnerShift = '中';
+        clearAssignment(swapPartner.id, d);
+        clearAssignment(sid, d);
+        setAssignment(sid, d, partnerShift); // person gets 中
+        setAssignment(swapPartner.id, d, myShift); // partner gets person's old shift
+      }
+    }
+  });
+
+  // Phase 8: rule6 swap FIRST — people with "週一上晚班" MUST swap to 晚班 on Mondays
+  state.staff.filter(p => p.rule6).forEach(person => {
+    const sid = person.id;
+    for(let d = 0; d < getTotalDays(); d++){
+      if(getDow(d) !== 1) continue;
+      const myShift = getAssignment(sid, d);
+      if(!myShift || myShift === '休' || myShift === '晚') continue;
+      const swapPartner = state.staff.find(p2 => {
+        if(p2.id === sid) return false;
+        if(getAssignment(p2.id, d) !== '晚') return false;
+        if(p2.rule6) return false;
+        if(myShift === '早' && d > 0 && getAssignment(p2.id, d-1) === '晚' && !p2.allowNightToMorning) return false;
+        return true;
+      });
+      if(swapPartner){
+        clearAssignment(swapPartner.id, d);
+        clearAssignment(sid, d);
+        setAssignment(sid, d, '晚');
+        setAssignment(swapPartner.id, d, myShift);
+      } else if(!isWorking(sid, d)){
+        if(slotAvailable(d, '晚')) setAssignment(sid, d, '晚');
+      }
+    }
+  });
+
+  // Phase 8.5: avoidMorning swap — people with "盡量不上早班", try to swap 早班 with non-早班
+  state.staff.filter(p => p.avoidMorning).forEach(person => {
+    const sid = person.id;
+    for(let d = 0; d < getTotalDays(); d++){
+      const myShift = getAssignment(sid, d);
+      if(myShift !== '早') continue;
+      // Find someone on this day with non-早班 who can swap
+      const swapPartner = state.staff.find(p2 => {
+        if(p2.id === sid) return false;
+        const s2 = getAssignment(p2.id, d);
+        if(!s2 || s2 === '休' || s2 === '早') return false;
+        if(p2.avoidMorning) return false; // Don't swap with another avoidMorning person
+        // Check if p2 can take 早 without violating night-morning
+        if(!p2.allowNightToMorning && d > 0 && getAssignment(p2.id, d-1) === '晚') return false;
+        if(!p2.allowNightToMorning && d < getTotalDays()-1 && getAssignment(p2.id, d+1) === '早') return false;
+        // Check if person can take p2's shift without violating night-morning
+        if(!person.allowNightToMorning && s2 === '晚' && d < getTotalDays()-1 && getAssignment(sid, d+1) === '早') return false;
+        if(!person.allowNightToMorning && s2 === '晚'){} // 晚 after anything is fine for prev day
+        // Check rule6: don't take 晚 from rule6 person on Monday
+        if(p2.rule6 && getDow(d) === 1 && s2 === '晚') return false;
+        // Check rule7: don't give 早 to rule7 person on Tue-Thu (they need 中)
+        const dow = getDow(d);
+        if(p2.rule7 && dow >= 2 && dow <= 4) return false;
+        return true;
+      });
+      if(swapPartner){
+        const partnerShift = getAssignment(swapPartner.id, d);
+        clearAssignment(swapPartner.id, d);
+        clearAssignment(sid, d);
+        setAssignment(sid, d, partnerShift);
+        setAssignment(swapPartner.id, d, '早');
+      }
+    }
+  });
+
+  // Phase 9: preferNight swap — people with "優先晚班", skip rule6 holders
+  state.staff.filter(p => p.preferNight).forEach(person => {
+    const sid = person.id;
+    for(let d = 0; d < getTotalDays(); d++){
+      const myShift = getAssignment(sid, d);
+      if(!myShift || myShift === '休' || myShift === '晚') continue;
+      const swapPartner = state.staff.find(p2 => {
+        if(p2.id === sid) return false;
+        if(getAssignment(p2.id, d) !== '晚') return false;
+        if(p2.preferNight) return false;
+        if(p2.rule6 && getDow(d) === 1) return false; // Don't take from rule6 on Monday
+        if(myShift === '早' && d > 0 && getAssignment(p2.id, d-1) === '晚' && !p2.allowNightToMorning) return false;
+        if(d < getTotalDays()-1 && getAssignment(sid, d+1) === '早' && !person.allowNightToMorning) return false;
+        return true;
+      });
+      if(swapPartner){
+        clearAssignment(swapPartner.id, d);
+        clearAssignment(sid, d);
+        setAssignment(sid, d, '晚');
+        setAssignment(swapPartner.id, d, myShift);
+      }
+    }
+  });
+
+  // Phase 10: Post-swap rule fix — check all hard rules, try same-day swaps to fix violations
+  for(let fixIter = 0; fixIter < 50; fixIter++){
+    let fixed = false;
+    state.staff.forEach(person => {
+      const sid = person.id;
+      for(let d = 1; d < getTotalDays(); d++){
+        // Fix night-morning violation
+        if(!person.allowNightToMorning && getAssignment(sid, d) === '早' && getAssignment(sid, d-1) === '晚'){
+          // Try swap this 早 with someone else's non-早 on same day
+          const other = state.staff.find(p2 => {
+            if(p2.id === sid) return false;
+            const s2 = getAssignment(p2.id, d);
+            if(!s2 || s2 === '休' || s2 === '早') return false;
+            // Can person take p2's shift? Can p2 take 早?
+            if(d > 0 && getAssignment(p2.id, d-1) === '晚' && !p2.allowNightToMorning) return false;
+            return true;
+          });
+          if(other){
+            const otherShift = getAssignment(other.id, d);
+            clearAssignment(other.id, d);
+            clearAssignment(sid, d);
+            setAssignment(sid, d, otherShift);
+            setAssignment(other.id, d, '早');
+            fixed = true;
+          }
+        }
+      }
+      // Fix consecutive > 6
+      let run = 0;
+      for(let d = 0; d < getTotalDays(); d++){
+        if(isWorking(sid, d)){ run++; }
+        else { run = 0; continue; }
+        if(run > 6){
+          // Set this day to 休 to break the streak
+          clearAssignment(sid, d);
+          setAssignment(sid, d, '休');
+          fixed = true;
+          run = 0;
+        }
+      }
+      // Fix rule4: consecutive Sat-Sun both working
+      if(person.rule4){
+        for(let d = 0; d < getTotalDays()-1; d++){
+          if(getDow(d) === 6 && isWorking(sid, d) && isWorking(sid, d+1)){
+            // Try swap Sunday with someone who's off Sunday
+            const sundayShift = getAssignment(sid, d+1);
+            const swapper = state.staff.find(p2 => {
+              if(p2.id === sid) return false;
+              if(isWorking(p2.id, d+1)) return false;
+              if(isDayOff(p2.id, d+1)) return false;
+              return canAssignForAuto(p2.id, d+1, sundayShift);
+            });
+            if(swapper){
+              clearAssignment(sid, d+1);
+              setAssignment(swapper.id, d+1, sundayShift);
+              setAssignment(sid, d+1, '休');
+              fixed = true;
+            }
+          }
+        }
+      }
+    });
+    if(!fixed) break;
+  }
+
+  // Check: managers/supervisors MUST hit exact desiredDays, retry up to 10 times if not
+  const leadersMet = state.staff.filter(s => s.role === 'manager' || s.role === 'supervisor')
+    .every(p => countWorkDays(p.id) === p.desiredDays);
+  if(!leadersMet && (state._retryCount || 0) < 10){
+    state._retryCount = (state._retryCount || 0) + 1;
+    // Re-run with fresh randomization
+    state.staff.forEach(s => { state.assignments[s.id] = {}; });
+    runAutoSchedule();
+    return;
+  }
+
+  // Validate and auto-retry if rules violated (up to 10 attempts total)
+  const testWarnings = validate(true); // silent mode
+  const hasRuleViolation = testWarnings.some(w => w.type === 'error');
+  if(hasRuleViolation && (state._retryCount || 0) < 10){
+    state._retryCount = (state._retryCount || 0) + 1;
+    state.staff.forEach(s => { state.assignments[s.id] = {}; });
+    runAutoSchedule();
+    return;
+  }
+  delete state._retryCount;
+
+  // Fill ALL remaining unassigned days with "休" (red label) for every person
+  state.staff.forEach(person => {
+    const sid = person.id;
+    for(let d = 0; d < getTotalDays(); d++){
+      if(!isWorking(sid, d) && !isDayOff(sid, d) && !getAssignment(sid, d)){
+        setAssignment(sid, d, '休');
+      }
+    }
+  });
+
+  // Phase 10.5: Ensure each employee has ≥3 shifts per week (fill up if short)
+  const empListFix = state.staff.filter(p => p.role === 'employee');
+  for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
+    for(const person of empListFix){
+      const sid = person.id;
+      let weekShifts = 0;
+      for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++){
+        if(isWorking(sid, d)) weekShifts++;
+      }
+      let safety = 0;
+      while(weekShifts < 3 && safety < 20){
+        safety++;
+        let added = false;
+        const days = [];
+        for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++) days.push(d);
+        days.sort(() => Math.random() - 0.5);
+        for(const d of days){
+          if(isDayOff(sid,d) || isWorking(sid,d)) continue;
+          if(person.weeklyOff && person.weeklyOff[getDow(d)]) continue;
+          if(wouldExceedConsecutiveIfAdded(sid, d)) continue;
+          const shifts = getAvailShifts(d).sort(() => Math.random() - 0.5);
+          for(const shift of shifts){
+            if(violatesNightMorning(sid, d, shift)) continue;
+            const needed = getDayReq(d)[shift] - getSlotCount(d, shift);
+            if(needed <= 0) continue;
+            setAssignment(sid, d, shift);
+            weekShifts++; added = true; break;
+          }
+          if(added) break;
+        }
+        if(!added) break;
+      }
+    }
+  }
+
+  // Phase 11: Only when 2+ people on same shift, convert 早→早1/早2, 晚→晚1/晚2
+  for(let d = 0; d < getTotalDays(); d++){
+    const morningPeople = [];
+    const eveningPeople = [];
+    state.staff.forEach(p => {
+      const a = getAssignment(p.id, d);
+      if(a === '早') morningPeople.push(p);
+      if(a === '晚') eveningPeople.push(p);
+    });
+    // Only split if 2+ people
+    if(morningPeople.length >= 2){
+      const dow = getDow(d);
+      // Manager on Monday only → force 早1
+      const managers = morningPeople.filter(p => p.role === 'manager' && dow === 1);
+      const others = morningPeople.filter(p => !(p.role === 'manager' && dow === 1));
+      others.sort(() => Math.random() - 0.5);
+      const ordered = [...managers, ...others];
+      ordered.forEach((p, i) => {
+        setAssignment(p.id, d, `早${i+1}`);
+      });
+    }
+    if(eveningPeople.length >= 2){
+      const preferNightPeople = eveningPeople.filter(p => p.preferNight);
+      const otherEvening = eveningPeople.filter(p => !p.preferNight);
+      otherEvening.sort(() => Math.random() - 0.5);
+      const eveningSlots = [];
+      for(let i = 0; i < eveningPeople.length; i++) eveningSlots.push(`晚${i+1}`);
+      preferNightPeople.forEach(p => {
+        const idx = eveningSlots.indexOf('晚2');
+        if(idx >= 0){
+          setAssignment(p.id, d, '晚2');
+          eveningSlots.splice(idx, 1);
+        } else {
+          const slot = eveningSlots.shift();
+          if(slot) setAssignment(p.id, d, slot);
+        }
+      });
+      otherEvening.forEach(p => {
+        const slot = eveningSlots.shift();
+        if(slot) setAssignment(p.id, d, slot);
+      });
+    }
+  }
+
+  saveState(); render();
+}
+
+// schedulePerson is no longer used — scheduling is now round-robin in runAutoSchedule
+
+function canAssignForAuto(sid, di, shift){
+  // Same as canAssign but works during auto-schedule
+  if(isDayOff(sid, di)) return false;
+  if(isWorking(sid, di)) return false;
+  // Weekly fixed off day
+  const personWO = getStaffById(sid);
+  if(personWO && personWO.weeklyOff && personWO.weeklyOff[getDow(di)]) return false;
+  const req = getDayReq(di);
+  if(!req[shift] || req[shift] === 0) return false;
+  if(getSlotCount(di, shift) >= req[shift]) return false;
+  if(wouldExceedConsecutiveIfAdded(sid, di)) return false;
+  // Night-morning check
+  const person = getStaffById(sid);
+  if(!person.allowNightToMorning){
+    if(shift === '早' && di > 0){
+      if(getAssignment(sid, di-1) === '晚' && !hasException(sid, di)) return false;
+    }
+    if(shift === '晚' && di < getTotalDays()-1){
+      if(getAssignment(sid, di+1) === '早' && !hasException(sid, di+1)) return false;
+    }
+  }
+  if(person.rule4 && isWeekend(di)){
+    const dow = getDow(di);
+    if(dow === 6 && di + 1 < getTotalDays() && isWorking(sid, di + 1)) return false;
+    if(dow === 0 && di - 1 >= 0 && isWorking(sid, di - 1)) return false;
+  }
+  // Rule 5
+  if(person.rule5 && isWeekend(di)){
+    if(countFreeWeekendDays(sid) <= 2) return false;
+  }
+  // Manager/supervisor: max 5 days per week
+  if(person.role === 'manager' || person.role === 'supervisor'){
+    if(countWeekWorkDays(sid, getWeekIndex(di)) >= 5) return false;
+  }
+  // Rule 6, 7, preferNight, avoidMorning: skip during scheduling — handled by Phase 7/8/9 swap after
+  return true;
+}
+
+function getSlotDifficulty(di, shift, excludeSid){
+  // How many other people could fill this slot? Fewer = harder = higher priority
+  let count = 0;
+  state.staff.forEach(s => {
+    if(s.id === excludeSid) return;
+    if(!isWorking(s.id, di) && !isDayOff(s.id, di)){
+      // Rough check
+      count++;
+    }
+  });
+  return Math.max(0, 10 - count);
+}
+
+function countWorkDays(sid){
+  let c = 0;
+  for(let d = 0; d < getTotalDays(); d++) if(isWorking(sid,d)) c++;
+  return c;
+}
+
+function clearAllAssignments(){
+  if(!confirm('確定要清除所有排班資料嗎？')) return;
+  state.staff.forEach(s => { state.assignments[s.id] = {}; });
+  state.manualLocks = {};
+  saveState(); render();
+}
+
+// ===== VALIDATION =====
+function validate(silent){
+  const warnings = [];
+  state.staff.forEach(person => {
+    const sid = person.id;
+    // Check consecutive days
+    let run = 0;
+    for(let d = 0; d < getTotalDays(); d++){
+      if(isWorking(sid,d)){ run++; if(run > 6) warnings.push({type:'error',msg:`${person.name}：第${d-5}~${d+1}天連續工作超過6天`}); }
+      else run = 0;
+    }
+    // Check night-morning
+    for(let d = 1; d < getTotalDays(); d++){
+      if(isShiftMorning(getAssignment(sid,d)) && isShiftEvening(getAssignment(sid,d-1)) && !hasException(sid,d) && !person.allowNightToMorning){
+        warnings.push({type:'error',msg:`${person.name}：第${d}天(${getDayLabel(d)})晚班後隔天排早班`});
+      }
+    }
+    // Manager Sunday morning (any 早 OK), Monday must be 早1
+    if(person.role === 'manager'){
+      for(let d = 0; d < getTotalDays(); d++){
+        const dow = getDow(d);
+        const a = getAssignment(sid, d);
+        if(dow === 0 && !isDayOff(sid,d) && isWorking(sid,d) && !isShiftMorning(a)){
+          warnings.push({type:'warn',msg:`${person.name}(經理)：${getDayLabel(d)}(日) 應排早班`});
+        }
+        if(dow === 1 && !isDayOff(sid,d) && isWorking(sid,d)){
+          if(!isShiftMorning(a)){
+            warnings.push({type:'warn',msg:`${person.name}(經理)：${getDayLabel(d)}(一) 應排早班`});
+          } else if(a !== '早1' && a !== '早'){
+            warnings.push({type:'warn',msg:`${person.name}(經理)：${getDayLabel(d)}(一) 應排早1`});
+          }
+        }
+      }
+    }
+    // Rule 4: consecutive Sat-Sun cannot both work
+    if(person.rule4){
+      for(let d = 0; d < getTotalDays()-1; d++){
+        if(getDow(d) === 6 && isWorking(sid, d) && isWorking(sid, d+1)){
+          warnings.push({type:'error',msg:`${person.name}：${getDayLabel(d)}(六)和${getDayLabel(d+1)}(日)連續上班（違反六日擇一休）`});
+        }
+      }
+    }
+    // Rule 5
+    if(person.rule5){
+      if(countFreeWeekendDays(sid) < 2){
+        warnings.push({type:'error',msg:`${person.name}：${getTotalDays()}天內週六日休息不足2天`});
+      }
+    }
+    // Rule 6: Monday evening
+    if(person.rule6){
+      for(let d = 0; d < getTotalDays(); d++){
+        if(getDow(d) === 1 && isWorking(sid,d) && !isShiftEvening(getAssignment(sid,d)) && !isDayOff(sid,d)){
+          warnings.push({type:'error',msg:`${person.name}：${getDayLabel(d)}(一) 未排晚班（違反週一上晚班規定）`});
+        }
+      }
+    }
+    // Rule 7: Tue-Thu morning only
+    if(person.rule7){
+      for(let d = 0; d < getTotalDays(); d++){
+        const dow = getDow(d);
+        if(dow >= 2 && dow <= 4 && isWorking(sid,d) && getAssignment(sid,d) !== '中' && !isDayOff(sid,d)){
+          warnings.push({type:'error',msg:`${person.name}：${getDayLabel(d)}(${DOW_NAMES[dow]}) 非中班（違反週二到四只上午班規定）`});
+        }
+      }
+    }
+    // Manager/supervisor: max 5 days per week
+    if(person.role === 'manager' || person.role === 'supervisor'){
+      for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
+        const weekDays = countWeekWorkDays(sid, w);
+        if(weekDays > 5){
+          warnings.push({type:'error',msg:`${person.name}（${ROLE_LABEL[person.role]}）：第${w+1}週上班${weekDays}天，超過5天上限`});
+        }
+      }
+    }
+    // Check work days for manager/supervisor (must be exact) vs employee (min/max)
+    const worked = countWorkDays(sid);
+    if(person.role === 'manager' || person.role === 'supervisor'){
+      if(worked !== person.desiredDays){
+        warnings.push({type:'error',msg:`${person.name}（${ROLE_LABEL[person.role]}）：排了${worked}天，目標${person.desiredDays}天（必須剛好）`});
+      }
+    } else {
+      const minD = person.minDays !== undefined ? person.minDays : 12;
+      const maxD = person.maxDays !== undefined ? person.maxDays : 16;
+      if(worked < minD){
+        warnings.push({type:'error',msg:`${person.name}：上班天數(${worked})低於最少天數(${minD})`});
+      }
+      if(worked > maxD){
+        warnings.push({type:'error',msg:`${person.name}：上班天數(${worked})超過最多天數(${maxD})`});
+      }
+    }
+  });
+
+  // Check: each employee must have at least 3 shifts per week (Mon-Sun)
+  const valEmpList = state.staff.filter(s => s.role === 'employee');
+  for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
+    valEmpList.forEach(p => {
+      let weekShifts = 0;
+      for(let d = w*7; d < (w+1)*7 && d < getTotalDays(); d++){
+        if(isWorking(p.id, d)) weekShifts++;
+      }
+      if(weekShifts > 0 && weekShifts < 3){
+        warnings.push({type:'error',msg:`${p.name}：第${w+1}週只排${weekShifts}班（至少需3班/週）`});
+      }
+    });
+  }
+
+  // Check: all daily shifts must be fully staffed (100 slots total)
+  let totalSlots = 0, filledSlots = 0;
+  for(let d = 0; d < getTotalDays(); d++){
+    const req = getDayReq(d);
+    for(const shift of SHIFTS){
+      if(!req[shift]) continue;
+      totalSlots += req[shift];
+      const count = getSlotCount(d, shift);
+      filledSlots += Math.min(count, req[shift]);
+      if(count < req[shift]){
+        warnings.push({type:'error',msg:`${getDayLabel(d)}(${DOW_NAMES[getDow(d)]}) ${shift}班：需${req[shift]}人，只有${count}人（未排滿）`});
+      }
+    }
+  }
+
+  // Check: each day must have at least one manager or supervisor
+  for(let d = 0; d < getTotalDays(); d++){
+    let hasLeader = false;
+    state.staff.forEach(p => {
+      if((p.role === 'manager' || p.role === 'supervisor') && isWorking(p.id, d)) hasLeader = true;
+    });
+    if(!hasLeader){
+      warnings.push({type:'error',msg:`${getDayLabel(d)}(${DOW_NAMES[getDow(d)]}) 沒有經理或主任上班`});
+    }
+  }
+
+  // Check: each day must have more than 1 person working
+  for(let d = 0; d < getTotalDays(); d++){
+    let totalWorking = 0;
+    state.staff.forEach(p => { if(isWorking(p.id, d)) totalWorking++; });
+    if(totalWorking === 1){
+      warnings.push({type:'error',msg:`${getDayLabel(d)}(${DOW_NAMES[getDow(d)]}) 只有1人上班`});
+    }
+  }
+
+  return warnings;
+}
+
+// ===== RENDERING =====
+function render(){
+  renderSidebar();
+  renderMain();
+}
+
+function renderSidebar(){
+  const el = document.getElementById('sidebar');
+  const collapsed = state._sidebarCollapsed || false;
+  let html = `<h2 style="cursor:pointer" onclick="toggleSidebar()">
+    <span>${collapsed ? '▶' : '▼'} 員工管理</span>
+    <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();addStaff()">+ 新增</button>
+  </h2>`;
+  if(collapsed){
+    html += `<div style="font-size:.8rem;color:var(--text2);padding:4px 0">共 ${state.staff.length} 人（點擊展開）</div>`;
+    el.innerHTML = html;
+    return;
+  }
+
+  const roleOrder = ['manager','supervisor','employee'];
+  for(const role of roleOrder){
+    const people = state.staff.filter(s => s.role === role);
+    if(people.length === 0 && role !== 'manager') continue;
+    people.forEach(person => {
+      const sel = selectedStaffId === person.id ? 'selected' : '';
+      const targetDays = person.desiredDays;
+      const worked = countWorkDays(person.id);
+      let shiftCounts = {早:0,中:0,晚:0};
+      for(let d=0;d<getTotalDays();d++){
+        const a = getAssignment(person.id,d);
+        if(a && a !== '休') shiftCounts[a]++;
+      }
+
+      const targetLabel = person.role === 'employee'
+        ? `${person.minDays !== undefined ? person.minDays : 12}~${person.maxDays !== undefined ? person.maxDays : 16}`
+        : targetDays;
+      html += `<div class="staff-card ${sel}" onclick="selectStaff(${person.id})">
+        <div class="staff-header">
+          <input type="text" value="${esc(person.name)}" onchange="updateStaff(${person.id},'name',this.value)" onclick="event.stopPropagation()">
+          <select onchange="updateStaff(${person.id},'role',this.value)" onclick="event.stopPropagation()">
+            ${ROLES.map(r => `<option value="${r.key}" ${person.role===r.key?'selected':''}>${r.label}</option>`).join('')}
+          </select>
+          <button class="btn-icon" onclick="event.stopPropagation();removeStaff(${person.id})" title="刪除">✕</button>
+        </div>
+        <div class="staff-options">
+          ${person.role === 'employee' ? `
+          <div class="days-input">
+            <span>最少</span>
+            <input type="number" min="0" max="28" value="${person.minDays !== undefined ? person.minDays : 12}" onchange="updateStaff(${person.id},'minDays',this.value)" onclick="event.stopPropagation()" style="width:42px">
+            <span>天 ～ 最多</span>
+            <input type="number" min="0" max="28" value="${person.maxDays !== undefined ? person.maxDays : 16}" onchange="updateStaff(${person.id},'maxDays',this.value)" onclick="event.stopPropagation()" style="width:42px">
+            <span>天</span>
+          </div>` : `
+          <div class="days-input">
+            <span>目標</span>
+            <input type="number" min="0" max="${getTotalDays()}" value="${person.desiredDays}" onchange="updateLeaderDays(${person.id},'desiredDays',this.value)" onclick="event.stopPropagation()" style="width:42px">
+            <span>天 放假</span>
+            <input type="number" min="0" max="${getTotalDays()}" value="${person.offDays || 8}" onchange="updateLeaderDays(${person.id},'offDays',this.value)" onclick="event.stopPropagation()" style="width:42px">
+            <span>天</span>
+          </div>`}
+          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule4?'checked':''} onchange="updateStaff(${person.id},'rule4',this.checked)"> 六日擇一休（不連續上班）</label>
+          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule5?'checked':''} onchange="updateStaff(${person.id},'rule5',this.checked)"> 至少休兩天週六或週日</label>
+          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule6?'checked':''} onchange="updateStaff(${person.id},'rule6',this.checked)"> 週一上晚班</label>
+          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.rule7?'checked':''} onchange="updateStaff(${person.id},'rule7',this.checked)"> 週二到四只上午班</label>
+          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.preferNight?'checked':''} onchange="updateStaff(${person.id},'preferNight',this.checked)"> 優先晚班</label>
+          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.avoidMorning?'checked':''} onchange="updateStaff(${person.id},'avoidMorning',this.checked)"> 盡量不上早班</label>
+          <label onclick="event.stopPropagation()"><input type="checkbox" ${person.allowNightToMorning?'checked':''} onchange="updateStaff(${person.id},'allowNightToMorning',this.checked)"> 允許晚班接早班</label>
+          <div style="margin-top:4px;font-size:.75rem;color:var(--text2)">
+            固定休假：
+            ${DOW_NAMES.map((name,i) => `<label style="margin-right:4px" onclick="event.stopPropagation()"><input type="checkbox" ${(person.weeklyOff||[])[i]?'checked':''} onchange="toggleWeeklyOff(${person.id},${i},this.checked)"> ${name}</label>`).join('')}
+          </div>
+        </div>
+        <div class="staff-stats">
+          <span>已排 ${worked}/${targetLabel} 天</span>
+          <span style="color:var(--morning)">早${shiftCounts['早']}</span>
+          <span style="color:var(--afternoon)">中${shiftCounts['中']}</span>
+          <span style="color:var(--evening)">晚${shiftCounts['晚']}</span>
+          <span style="color:var(--off)">休${getTotalDays() - worked}</span>
+        </div>
+      </div>`;
+    });
+  }
+  el.innerHTML = html;
+}
+
+function renderMain(){
+  const el = document.getElementById('main-area');
+  let html = '';
+
+  // Legend
+  html += `<div class="legend">
+    <span style="font-weight:600">圖例：</span>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--morning)"></div>早班</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--afternoon)"></div>中班</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--evening)"></div>晚班</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--off)"></div>預排假</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--exception)"></div>例外(晚→早)</div>
+    <span style="margin-left:8px;font-size:.7rem;color:var(--text2)">點擊儲存格可編輯</span>
+  </div>`;
+
+  // Schedule tables — one per week (W1-W4)
+  const DOW_LABELS = ['一','二','三','四','五','六','日'];
+  for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
+    const wStart = w * 7;
+    html += `<div class="schedule-wrapper" style="margin-bottom:16px">`;
+    html += `<table class="schedule"><thead><tr>`;
+    html += `<th class="col-name corner" style="font-weight:700;background:#e2e8f0">W${w+1}</th>`;
+    for(let wd = 0; wd < 7; wd++){
+      const d = wStart + wd;
+      const we = isWeekend(d) ? ' weekend' : '';
+      const req = getDayReq(d);
+      const reqStr = SHIFTS.filter(s => req[s]>0).map(s => `${s}${req[s]}`).join(' ');
+      html += `<th class="day-header${we}">
+        <div class="dow">${DOW_NAMES[getDow(d)]}</div>
+        <div class="date">${getDayLabel(d)}</div>
+        <div class="req">${reqStr}</div>
+      </th>`;
+    }
+    html += `</tr></thead><tbody>`;
+
+    // Staff rows
+    state.staff.forEach(person => {
+      const sid = person.id;
+      html += `<tr>`;
+      html += `<td class="col-name">${esc(person.name)}</td>`;
+      for(let wd = 0; wd < 7; wd++){
+        const d = wStart + wd;
+        const off = isDayOff(sid, d);
+        const assign = getAssignment(sid, d);
+        const exc = hasException(sid, d);
+        const we = isWeekend(d) ? ' weekend' : '';
+        const offCls = off ? ' day-off' : '';
+        let content = '';
+        if(off){
+          content = '<span class="badge badge-休">休</span>';
+        } else if(assign){
+          content = `<span class="badge badge-${assign}">${assign}</span>`;
+        }
+        if(exc) content += '<span class="exception-mark" title="例外">!</span>';
+        if(isManualLocked(sid, d)) content += '<span class="exception-mark" style="color:var(--primary);left:2px;right:auto" title="手動鎖定">🔒</span>';
+        const hasAny = assign !== null;
+        html += `<td class="cell${we}${offCls}" data-sid="${sid}" data-day="${d}" onclick="onCellClick(event,${sid},${d})"${hasAny ? ` draggable="true" ondragstart="onDragStart(event,${sid},${d})"` : ''} ondragover="onDragOver(event,${sid},${d})" ondragleave="onDragLeave(event)" ondrop="onDrop(event,${sid},${d})">${content}</td>`;
+      }
+      html += `</tr>`;
+    });
+
+    // Daily totals row
+    html += `<tr class="stats-row"><td class="col-name">人數</td>`;
+    for(let wd = 0; wd < 7; wd++){
+      const d = wStart + wd;
+      const req = getDayReq(d);
+      let totalReq = 0, totalFilled = 0;
+      SHIFTS.forEach(s => { totalReq += req[s]; totalFilled += getSlotCount(d,s); });
+      const cls = totalFilled >= totalReq ? 'stat-ok' : 'stat-warn';
+      html += `<td class="${cls}" style="font-size:.7rem;padding:4px 2px">${totalFilled}/${totalReq}</td>`;
+    }
+    html += `</tr>`;
+
+    html += `</tbody></table></div>`;
+  }
+
+  // Summary cards
+  html += `<div class="summary-cols">`;
+
+  // Per-person summary
+  html += `<div class="summary-card"><h3>個人統計</h3><table>
+    <tr><th>姓名</th><th>角色</th><th>目標</th><th>已排</th><th>早</th><th>中</th><th>晚</th><th>休</th></tr>`;
+  state.staff.forEach(p => {
+    const targetDisplay = p.role === 'employee'
+      ? `${p.minDays !== undefined ? p.minDays : 12}~${p.maxDays !== undefined ? p.maxDays : 16}`
+      : p.desiredDays;
+    const worked = countWorkDays(p.id);
+    let sc = {早:0,中:0,晚:0};
+    for(let d=0;d<getTotalDays();d++){
+      const a=getAssignment(p.id,d);
+      if(a && a !== '休'){
+        if(a.startsWith('早')) sc['早']++;
+        else if(a.startsWith('晚')) sc['晚']++;
+        else if(a === '中') sc['中']++;
+      }
+    }
+    const offCount = getTotalDays() - worked;
+    let cls = '';
+    if(p.role === 'employee'){
+      const minD = p.minDays !== undefined ? p.minDays : 12;
+      const maxD = p.maxDays !== undefined ? p.maxDays : 16;
+      if(worked < minD || worked > maxD) cls = 'stat-warn';
+    } else {
+      if(worked !== p.desiredDays) cls = 'stat-warn';
+    }
+    html += `<tr><td style="text-align:left">${esc(p.name)}</td><td>${ROLE_LABEL[p.role]}</td>
+      <td>${targetDisplay}</td><td class="${cls}">${worked}</td>
+      <td style="color:var(--morning)">${sc['早']}</td><td style="color:var(--afternoon)">${sc['中']}</td>
+      <td style="color:var(--evening)">${sc['晚']}</td><td style="color:var(--off)">${offCount}</td></tr>`;
+  });
+  html += `</table></div>`;
+
+  // Daily coverage
+  html += `<div class="summary-card"><h3>每日班次覆蓋</h3><div style="max-height:200px;overflow-y:auto"><table>
+    <tr><th>日期</th><th>星期</th><th>早班</th><th>中班</th><th>晚班</th><th>狀態</th></tr>`;
+  for(let d = 0; d < getTotalDays(); d++){
+    const req = getDayReq(d);
+    const dow = getDow(d);
+    let ok = true;
+    let cells = '';
+    SHIFTS.forEach(s => {
+      const n = req[s]||0;
+      const c = getSlotCount(d,s);
+      if(n === 0){ cells += '<td style="color:#cbd5e1">-</td>'; }
+      else {
+        const cls = c >= n ? 'stat-ok' : 'stat-warn';
+        if(c < n) ok = false;
+        cells += `<td class="${cls}">${c}/${n}</td>`;
+      }
+    });
+    html += `<tr><td>${getDayLabel(d)}</td><td>${DOW_NAMES[dow]}</td>${cells}<td>${ok?'✓':'✕'}</td></tr>`;
+  }
+  html += `</table></div></div>`;
+  html += `</div>`;
+
+  // Warnings
+  const warnings = validate();
+  if(warnings.length > 0){
+    html += `<div class="warnings"><h3 style="font-size:.9rem;margin-bottom:8px">驗證警告（${warnings.length}）</h3>`;
+    warnings.forEach(w => {
+      html += `<div class="${w.type==='error'?'error-item':'warning-item'}">${esc(w.msg)}</div>`;
+    });
+    html += `</div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ===== CELL MENU =====
+function onCellClick(e, sid, di){
+  e.stopPropagation();
+  showCellMenu(e.clientX, e.clientY, sid, di);
+}
+
+function showCellMenu(x, y, sid, di){
+  const menu = document.getElementById('cell-menu');
+  const person = getStaffById(sid);
+  if(!person) return;
+
+  const off = isDayOff(sid, di);
+  const assign = getAssignment(sid, di);
+  const exc = hasException(sid, di);
+  const avail = getAvailShifts(di);
+
+  let html = `<div style="padding:4px 8px;font-size:.7rem;color:var(--text2);border-bottom:1px solid var(--border);margin-bottom:2px">${person.name} - ${getDayLabel(di)}(${DOW_NAMES[getDow(di)]})</div>`;
+
+  // Shift options
+  avail.forEach(shift => {
+    const isCurrent = assign === shift;
+    const highlight = isCurrent ? 'font-weight:700;' : '';
+    html += `<button class="menu-item" style="${highlight}" onclick="menuSetShift(${sid},${di},'${shift}')">
+      <span class="badge badge-${shift}" style="margin-right:4px">${shift}</span>${shift === '早'?'早班':shift === '中'?'中班':'晚班'}${isCurrent?' ✓':''}
+    </button>`;
+  });
+
+  html += `<div class="menu-divider"></div>`;
+
+  // Day off toggle
+  html += `<button class="menu-item" onclick="menuToggleOff(${sid},${di})">
+    <span class="badge badge-休" style="margin-right:4px">休</span>${off?'取消預排假':'預排假'}${off?' ✓':''}
+  </button>`;
+
+  // Exception toggle (only show if person-level allowNightToMorning is off)
+  if(!person.allowNightToMorning){
+    html += `<button class="menu-item" onclick="menuToggleException(${sid},${di})">
+      <span style="color:var(--exception);margin-right:4px;font-weight:700">!</span>${exc?'取消例外':'設為例外（允許晚→早）'}${exc?' ✓':''}
+    </button>`;
+  } else {
+    html += `<div style="padding:4px 12px;font-size:.7rem;color:var(--text2)">已全局允許晚班接早班</div>`;
+  }
+
+  // Clear
+  if(assign){
+    html += `<div class="menu-divider"></div>`;
+    html += `<button class="menu-item" style="color:var(--danger)" onclick="menuClear(${sid},${di})">清除排班</button>`;
+  }
+
+  menu.innerHTML = html;
+  menu.classList.add('show');
+
+  // Position
+  const mw = 200, mh = menu.offsetHeight || 250;
+  let left = x, top = y;
+  if(left + mw > window.innerWidth) left = window.innerWidth - mw - 10;
+  if(top + mh > window.innerHeight) top = window.innerHeight - mh - 10;
+  if(left < 0) left = 10;
+  if(top < 0) top = 10;
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
+  menuOpen = true;
+}
+
+function hideCellMenu(){
+  document.getElementById('cell-menu').classList.remove('show');
+  menuOpen = false;
+}
+
+function checkRuleViolationsForManual(sid, di, shift){
+  const person = getStaffById(sid);
+  if(!person) return null;
+  // Weekly fixed off day
+  if(person.weeklyOff && person.weeklyOff[getDow(di)]){
+    return `${person.name}：${DOW_NAMES[getDow(di)]} 是固定休假日`;
+  }
+  // Check night-morning rule
+  if(!person.allowNightToMorning){
+    if(shift === '早' && di > 0 && getAssignment(sid, di-1) === '晚' && !hasException(sid, di)){
+      return `${person.name}：違反晚班接早班規定（前一天是晚班）`;
+    }
+    if(shift === '晚' && di < getTotalDays()-1 && getAssignment(sid, di+1) === '早' && !hasException(sid, di+1)){
+      return `${person.name}：違反晚班接早班規定（隔天是早班）`;
+    }
+  }
+  // Rule 4: consecutive Sat-Sun cannot both work
+  if(person.rule4 && isWeekend(di)){
+    const dow = getDow(di);
+    if(dow === 6 && di + 1 < getTotalDays() && isWorking(sid, di + 1)){
+      return `${person.name}：違反「六日擇一休」（週六日不能連續上班）`;
+    }
+    if(dow === 0 && di - 1 >= 0 && isWorking(sid, di - 1)){
+      return `${person.name}：違反「六日擇一休」（週六日不能連續上班）`;
+    }
+  }
+  // Rule 5: at least 2 weekend days off
+  if(person.rule5 && isWeekend(di)){
+    if(countFreeWeekendDays(sid) <= 2) return `${person.name}：違反「至少休兩天週六或週日」規定`;
+  }
+  // Manager/supervisor: max 5 days per week
+  if(person.role === 'manager' || person.role === 'supervisor'){
+    if(countWeekWorkDays(sid, getWeekIndex(di)) >= 5) return `${person.name}：該週已排滿5天班（主管每週最多5天）`;
+  }
+  // Rule 6: Monday must be evening
+  if(person.rule6 && getDow(di) === 1 && shift !== '晚'){
+    return `${person.name}：違反「週一上晚班」規定（週一必須排晚班）`;
+  }
+  // Rule 7: Tue-Thu morning only
+  if(person.rule7){
+    const dow = getDow(di);
+    if(dow >= 2 && dow <= 4 && shift !== '中'){
+      return `${person.name}：違反「週二到四只上午班」規定`;
+    }
+  }
+  return null;
+}
+
+function menuSetShift(sid, di, shift){
+  if(isDayOff(sid, di)){
+    toggleDayOff(sid, di);
+  }
+  if(getAssignment(sid, di) === shift){
+    clearAssignment(sid, di, true);
+    clearManualLock(sid, di);
+  } else {
+    // Only block on hard rules: consecutive>6 and weekly>5 (with confirm)
+    const person = getStaffById(sid);
+    // Check consecutive > 6
+    if(wouldExceedConsecutiveIfAdded(sid, di)){
+      if(!confirm(`${person.name}：這樣會連續工作超過6天，確定要排嗎？`)){
+        hideCellMenu(); return;
+      }
+    }
+    // Check weekly > 5 for everyone
+    if(countWeekWorkDays(sid, getWeekIndex(di)) >= 5){
+      if(!confirm(`${person.name}：該週已排5天班，確定要排第6天嗎？`)){
+        hideCellMenu(); return;
+      }
+    }
+    // Check night-morning
+    if(violatesNightMorning(sid, di, shift)){
+      if(!confirm(`${person.name}：晚班接早班，確定嗎？`)){
+        hideCellMenu(); return;
+      }
+    }
+    // All other rules: just assign, warnings will show in validate below
+    clearAssignment(sid, di, true);
+    setAssignment(sid, di, shift);
+    setManualLock(sid, di, shift);
+  }
+  hideCellMenu();
+  saveState(); render();
+}
+
+function menuToggleOff(sid, di){
+  toggleDayOff(sid, di);
+  hideCellMenu();
+  saveState(); render();
+}
+
+function menuToggleException(sid, di){
+  toggleException(sid, di);
+  hideCellMenu();
+  saveState(); render();
+}
+
+function menuClear(sid, di){
+  clearAssignment(sid, di);
+  hideCellMenu();
+  saveState(); render();
+}
+
+function selectStaff(id){
+  selectedStaffId = selectedStaffId === id ? null : id;
+  render();
+}
+
+// ===== EXPORT =====
+function exportSchedule(){
+  let csv = '';
+  const DOW_LABELS = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
+  
+  for(let w = 0; w < Math.ceil(getTotalDays()/7); w++){
+    // Week header
+    csv += `W${w+1},`;
+    for(let wd = 0; wd < 7; wd++){
+      const d = w * 7 + wd;
+      if(d < getTotalDays()) csv += `${DOW_LABELS[wd]} ${getDayLabel(d)}`;
+      if(wd < 6) csv += ',';
+    }
+    csv += '\n';
+    
+    // Each person
+    state.staff.forEach(p => {
+      csv += `${p.name},`;
+      for(let wd = 0; wd < 7; wd++){
+        const d = w * 7 + wd;
+        if(d < getTotalDays()){
+          if(isDayOff(p.id, d)){
+            csv += '休';
+          } else {
+            const a = getAssignment(p.id, d);
+            csv += a || '';
+          }
+        }
+        if(wd < 6) csv += ',';
+      }
+      csv += '\n';
+    });
+    csv += '\n'; // Blank line between weeks
+  }
+
+  const blob = new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `排班表_${state.startDate}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ===== DRAG & DROP =====
+let dragSid = null, dragDay = null;
+
+function onDragStart(e, sid, di){
+  dragSid = sid;
+  dragDay = di;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', ''); // Required for Firefox
+}
+
+function onDragOver(e, sid, di){
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function onDragLeave(e){
+  e.currentTarget.classList.remove('drag-over');
+}
+
+function onDrop(e, sid, di){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if(dragSid === null || dragDay === null) return;
+  if(dragSid === sid && dragDay === di) return; // Same cell
+
+  const srcShift = getAssignment(dragSid, dragDay);
+  const dstShift = getAssignment(sid, di);
+  if(!srcShift) return; // Source must have something (including 休)
+
+  // Always do a full swap between two cells
+  clearAssignment(dragSid, dragDay, true);
+  clearAssignment(sid, di, true);
+  // Place dst's value at src position, src's value at dst position
+  if(dstShift) setAssignment(dragSid, dragDay, dstShift);
+  if(srcShift) setAssignment(sid, di, srcShift);
+
+  dragSid = null; dragDay = null;
+  saveState(); render();
+}
+
+// ===== INIT =====
+function init(){
+  state = loadState() || getDefaultState();
+  document.getElementById('start-date').value = state.startDate;
+  document.getElementById('total-days').value = state.totalDays || 28;
+  document.getElementById('start-date').addEventListener('change', function(){
+    // Force start date to Monday
+    const picked = new Date(this.value + 'T00:00:00');
+    const dow = picked.getDay();
+    if(dow !== 1){
+      const diff = dow === 0 ? 6 : dow - 1;
+      picked.setDate(picked.getDate() - diff);
+      this.value = fmt(picked);
+    }
+    state.startDate = this.value;
+    saveState(); render();
+  });
+
+  document.addEventListener('click', function(e){
+    if(menuOpen && !e.target.closest('#cell-menu')){
+      hideCellMenu();
+    }
+  });
+
+  render();
+}
+
+init();
+</script>
+</body>
+</html>
