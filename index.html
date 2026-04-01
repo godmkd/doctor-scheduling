@@ -1587,10 +1587,21 @@ function menuSetShift(sid, di, shift){
         hideCellMenu(); return;
       }
     }
-    // Check weekly > 5 for managers/supervisors
-    if(person && (person.role === 'manager' || person.role === 'supervisor')){
-      if(countWeekWorkDays(sid, getWeekIndex(di)) >= 5){
-        if(!confirm(`${person.name}：該週已排5天班，確定要排第6天嗎？`)){
+    // Check weekly > 5 for everyone
+    if(countWeekWorkDays(sid, getWeekIndex(di)) >= 5){
+      if(!confirm(`${person.name}：該週已排5天班，確定要排第6天嗎？`)){
+        hideCellMenu(); return;
+      }
+    }
+    // Check night-morning
+    if(!person.allowNightToMorning){
+      if(shift === '早' && di > 0 && getAssignment(sid, di-1) === '晚'){
+        if(!confirm(`${person.name}：前一天是晚班，隔天排早班，確定嗎？`)){
+          hideCellMenu(); return;
+        }
+      }
+      if(shift === '晚' && di < 27 && getAssignment(sid, di+1) === '早'){
+        if(!confirm(`${person.name}：隔天是早班，今天排晚班，確定嗎？`)){
           hideCellMenu(); return;
         }
       }
