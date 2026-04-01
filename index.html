@@ -1062,6 +1062,7 @@ function countWorkDays(sid){
 function clearAllAssignments(){
   if(!confirm('確定要清除所有排班資料嗎？')) return;
   state.staff.forEach(s => { state.assignments[s.id] = {}; });
+  state.manualLocks = {};
   saveState(); render();
 }
 
@@ -1575,16 +1576,27 @@ function menuSetShift(sid, di, shift){
     toggleDayOff(sid, di);
   }
   if(getAssignment(sid, di) === shift){
-    clearAssignment(sid, di, true); // Force clear even if locked
+    clearAssignment(sid, di, true);
     clearManualLock(sid, di);
   } else {
-    const violation = checkRuleViolationsForManual(sid, di, shift);
-    if(violation){
-      alert(violation);
-      hideCellMenu();
-      return;
+    // Only block on hard rules: consecutive>6 and weekly>5 (with confirm)
+    const person = getStaffById(sid);
+    // Check consecutive > 6
+    if(wouldExceedConsecutiveIfAdded(sid, di)){
+      if(!confirm(`${person.name}：這樣會連續工作超過6天，確定要排嗎？`)){
+        hideCellMenu(); return;
+      }
     }
-    clearAssignment(sid, di, true); // Force clear for manual override
+    // Check weekly > 5 for managers/supervisors
+    if(person && (person.role === 'manager' || person.role === 'supervisor')){
+      if(countWeekWorkDays(sid, getWeekIndex(di)) >= 5){
+        if(!confirm(`${person.name}：該週已排5天班，確定要排第6天嗎？`)){
+          hideCellMenu(); return;
+        }
+      }
+    }
+    // All other rules: just assign, warnings will show in validate below
+    clearAssignment(sid, di, true);
     setAssignment(sid, di, shift);
     setManualLock(sid, di, shift);
   }
@@ -1685,16 +1697,16 @@ function onDrop(e, sid, di){
   if(dragDay === di){
     if(!dstShift || dstShift === '休'){
       // Move src to dst person on same day
-      if(wouldExceedConsecutiveIfAdded(sid, di)) { alert('互換失敗：會導致連續工作超過6天'); return; }
-      if(violatesNightMorning(sid, di, srcShift)) { alert('互換失敗：會違反晚班接早班規定'); return; }
+      if(wouldExceedConsecutiveIfAdded(sid, di) && !confirm('會連續工作超過6天，確定互換嗎？')) return;
+      // night-morning: allow, will show in validate
       clearAssignment(dragSid, dragDay, true);
       clearManualLock(dragSid, dragDay);
       setAssignment(sid, di, srcShift);
 
     } else {
       // Swap two people's shifts on the same day
-      if(violatesNightMorning(sid, di, srcShift)) { alert('互換失敗：會違反晚班接早班規定'); return; }
-      if(violatesNightMorning(dragSid, dragDay, dstShift)) { alert('互換失敗：會違反晚班接早班規定'); return; }
+      // night-morning: allow, will show in validate
+      // night-morning: allow, will show in validate
       clearAssignment(dragSid, dragDay, true);
       clearAssignment(sid, di, true);
       setAssignment(dragSid, dragDay, dstShift);
@@ -1706,10 +1718,10 @@ function onDrop(e, sid, di){
     // Different days — swap the two cells' assignments
     if(dstShift && dstShift !== '休'){
       // Both have shifts — check constraints for both
-      if(wouldExceedConsecutiveIfAdded(sid, di) && !isWorking(sid, di)) { alert('互換失敗：會導致連續工作超過6天'); return; }
-      if(wouldExceedConsecutiveIfAdded(dragSid, dragDay) && !isWorking(dragSid, dragDay)) { alert('互換失敗：會導致連續工作超過6天'); return; }
-      if(violatesNightMorning(dragSid, di, dstShift)) { alert('互換失敗：會違反晚班接早班規定'); return; }
-      if(violatesNightMorning(sid, dragDay, srcShift)) { alert('互換失敗：會違反晚班接早班規定'); return; }
+      if(wouldExceedConsecutiveIfAdded(sid, di) && !isWorking(sid, di) && !confirm('會連續工作超過6天，確定互換嗎？')) return;
+      if(wouldExceedConsecutiveIfAdded(dragSid, dragDay) && !isWorking(dragSid, dragDay) && !confirm('會連續工作超過6天，確定互換嗎？')) return;
+      // night-morning: allow, will show in validate
+      // night-morning: allow, will show in validate
       clearAssignment(dragSid, dragDay, true);
       clearAssignment(sid, di, true);
       setAssignment(dragSid, di, dstShift);
@@ -1721,8 +1733,8 @@ function onDrop(e, sid, di){
       // Temporarily clear src to check consecutive correctly
       const origSrc = getAssignment(dragSid, dragDay);
       clearAssignment(dragSid, dragDay, true);
-      if(wouldExceedConsecutiveIfAdded(sid, di)) { setAssignment(dragSid, dragDay, origSrc); alert('互換失敗：會導致連續工作超過6天'); return; }
-      if(violatesNightMorning(sid, di, srcShift)) { setAssignment(dragSid, dragDay, origSrc); alert('互換失敗：會違反晚班接早班規定'); return; }
+      if(wouldExceedConsecutiveIfAdded(sid, di) && !confirm('會連續工作超過6天，確定互換嗎？')) { setAssignment(dragSid, dragDay, origSrc); return; }
+      // night-morning: allow, will show in validate
       clearManualLock(dragSid, dragDay);
       setAssignment(sid, di, srcShift);
 
