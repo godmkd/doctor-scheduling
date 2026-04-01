@@ -1210,17 +1210,18 @@ function validate(silent){
     }
   });
 
-  // Check: each week must have at least (employee count × 3) employee shifts
+  // Check: each employee must have at least 3 shifts per week (Mon-Sun)
   const valEmpList = state.staff.filter(s => s.role === 'employee');
-  const minWeeklyTarget = valEmpList.length * 3;
   for(let w = 0; w < 4; w++){
-    let weekEmpShifts = 0;
-    for(let d = w*7; d < (w+1)*7 && d < 28; d++){
-      valEmpList.forEach(p => { if(isWorking(p.id, d)) weekEmpShifts++; });
-    }
-    if(weekEmpShifts < minWeeklyTarget){
-      warnings.push({type:'error',msg:`第${w+1}週員工班次不足：需${minWeeklyTarget}班（${valEmpList.length}人×3），只有${weekEmpShifts}班`});
-    }
+    valEmpList.forEach(p => {
+      let weekShifts = 0;
+      for(let d = w*7; d < (w+1)*7 && d < 28; d++){
+        if(isWorking(p.id, d)) weekShifts++;
+      }
+      if(weekShifts > 0 && weekShifts < 3){
+        warnings.push({type:'error',msg:`${p.name}：第${w+1}週只排${weekShifts}班（至少需3班/週）`});
+      }
+    });
   }
 
   // Check: all daily shifts must be fully staffed (100 slots total)
