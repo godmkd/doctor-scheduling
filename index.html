@@ -1017,9 +1017,9 @@ function runAutoSchedule(){
     // Only split if 2+ people
     if(morningPeople.length >= 2){
       const dow = getDow(d);
-      // Manager on Sunday/Monday → force 早1
-      const managers = morningPeople.filter(p => p.role === 'manager' && (dow === 0 || dow === 1));
-      const others = morningPeople.filter(p => !(p.role === 'manager' && (dow === 0 || dow === 1)));
+      // Manager on Monday only → force 早1
+      const managers = morningPeople.filter(p => p.role === 'manager' && dow === 1);
+      const others = morningPeople.filter(p => !(p.role === 'manager' && dow === 1));
       others.sort(() => Math.random() - 0.5);
       const ordered = [...managers, ...others];
       ordered.forEach((p, i) => {
@@ -1135,13 +1135,19 @@ function validate(silent){
         warnings.push({type:'error',msg:`${person.name}：第${d}天(${getDayLabel(d)})晚班後隔天排早班`});
       }
     }
-    // Manager Sunday/Monday morning
+    // Manager Sunday morning (any 早 OK), Monday must be 早1
     if(person.role === 'manager'){
       for(let d = 0; d < 28; d++){
         const dow = getDow(d);
-        if((dow === 0 || dow === 1) && !isDayOff(sid,d) && !isShiftMorning(getAssignment(sid,d))){
-          if(isWorking(sid,d)){
-            warnings.push({type:'warn',msg:`${person.name}(經理)：${getDayLabel(d)}(${DOW_NAMES[dow]}) 應排早班`});
+        const a = getAssignment(sid, d);
+        if(dow === 0 && !isDayOff(sid,d) && isWorking(sid,d) && !isShiftMorning(a)){
+          warnings.push({type:'warn',msg:`${person.name}(經理)：${getDayLabel(d)}(日) 應排早班`});
+        }
+        if(dow === 1 && !isDayOff(sid,d) && isWorking(sid,d)){
+          if(!isShiftMorning(a)){
+            warnings.push({type:'warn',msg:`${person.name}(經理)：${getDayLabel(d)}(一) 應排早班`});
+          } else if(a !== '早1' && a !== '早'){
+            warnings.push({type:'warn',msg:`${person.name}(經理)：${getDayLabel(d)}(一) 應排早1`});
           }
         }
       }
