@@ -1677,55 +1677,14 @@ function onDrop(e, sid, di){
 
   const srcShift = getAssignment(dragSid, dragDay);
   const dstShift = getAssignment(sid, di);
-  if(!srcShift || srcShift === '休') return; // Source must have a real shift
+  if(!srcShift) return; // Source must have something (including 休)
 
-  // If dropping on same day, swap shifts between two people
-  if(dragDay === di){
-    if(!dstShift || dstShift === '休'){
-      // Move src to dst person on same day
-      if(wouldExceedConsecutiveIfAdded(sid, di) && !confirm('會連續工作超過6天，確定互換嗎？')) return;
-      // night-morning: allow, will show in validate
-      clearAssignment(dragSid, dragDay, true);
-      clearManualLock(dragSid, dragDay);
-      setAssignment(sid, di, srcShift);
-
-    } else {
-      // Swap two people's shifts on the same day
-      // night-morning: allow, will show in validate
-      // night-morning: allow, will show in validate
-      clearAssignment(dragSid, dragDay, true);
-      clearAssignment(sid, di, true);
-      setAssignment(dragSid, dragDay, dstShift);
-      setAssignment(sid, di, srcShift);
-
-
-    }
-  } else {
-    // Different days — swap the two cells' assignments
-    if(dstShift && dstShift !== '休'){
-      // Both have shifts — check constraints for both
-      if(wouldExceedConsecutiveIfAdded(sid, di) && !isWorking(sid, di) && !confirm('會連續工作超過6天，確定互換嗎？')) return;
-      if(wouldExceedConsecutiveIfAdded(dragSid, dragDay) && !isWorking(dragSid, dragDay) && !confirm('會連續工作超過6天，確定互換嗎？')) return;
-      // night-morning: allow, will show in validate
-      // night-morning: allow, will show in validate
-      clearAssignment(dragSid, dragDay, true);
-      clearAssignment(sid, di, true);
-      setAssignment(dragSid, di, dstShift);
-      setAssignment(sid, dragDay, srcShift);
-
-
-    } else {
-      // Destination is empty/休 — move src shift there, check constraints
-      // Temporarily clear src to check consecutive correctly
-      const origSrc = getAssignment(dragSid, dragDay);
-      clearAssignment(dragSid, dragDay, true);
-      if(wouldExceedConsecutiveIfAdded(sid, di) && !confirm('會連續工作超過6天，確定互換嗎？')) { setAssignment(dragSid, dragDay, origSrc); return; }
-      // night-morning: allow, will show in validate
-      clearManualLock(dragSid, dragDay);
-      setAssignment(sid, di, srcShift);
-
-    }
-  }
+  // Always do a full swap between two cells
+  clearAssignment(dragSid, dragDay, true);
+  clearAssignment(sid, di, true);
+  // Place dst's value at src position, src's value at dst position
+  if(dstShift) setAssignment(dragSid, dragDay, dstShift);
+  if(srcShift) setAssignment(sid, di, srcShift);
 
   dragSid = null; dragDay = null;
   saveState(); render();
