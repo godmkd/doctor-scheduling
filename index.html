@@ -1760,6 +1760,15 @@ function init(){
   state = loadState() || getDefaultState();
   document.getElementById('start-date').value = state.startDate;
   document.getElementById('start-date').addEventListener('change', function(){
+    // Force start date to Monday
+    const picked = new Date(this.value + 'T00:00:00');
+    const dow = picked.getDay();
+    if(dow !== 1){
+      // Adjust to previous Monday
+      const diff = dow === 0 ? 6 : dow - 1;
+      picked.setDate(picked.getDate() - diff);
+      this.value = picked.toISOString().slice(0,10);
+    }
     state.startDate = this.value;
     saveState(); render();
   });
