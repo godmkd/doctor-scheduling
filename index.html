@@ -1699,7 +1699,7 @@ function onDrop(e, sid, di){
       clearAssignment(sid, di, true);
       setAssignment(dragSid, dragDay, dstShift);
       setAssignment(sid, di, srcShift);
-      setManualLock(dragSid, dragDay, dstShift);
+
       setManualLock(sid, di, srcShift);
     }
   } else {
@@ -1714,8 +1714,8 @@ function onDrop(e, sid, di){
       clearAssignment(sid, di, true);
       setAssignment(dragSid, di, dstShift);
       setAssignment(sid, dragDay, srcShift);
-      setManualLock(dragSid, di, dstShift);
-      setManualLock(sid, dragDay, srcShift);
+
+
     } else {
       // Destination is empty/休 — move src shift there, check constraints
       // Temporarily clear src to check consecutive correctly
