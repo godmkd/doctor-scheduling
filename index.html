@@ -1126,7 +1126,7 @@ function validate(silent){
     }
     // Check night-morning
     for(let d = 1; d < 28; d++){
-      if(getAssignment(sid,d) === '早' && getAssignment(sid,d-1) === '晚' && !hasException(sid,d) && !person.allowNightToMorning){
+      if(isShiftMorning(getAssignment(sid,d)) && isShiftEvening(getAssignment(sid,d-1)) && !hasException(sid,d) && !person.allowNightToMorning){
         warnings.push({type:'error',msg:`${person.name}：第${d}天(${getDayLabel(d)})晚班後隔天排早班`});
       }
     }
@@ -1158,7 +1158,7 @@ function validate(silent){
     // Rule 6: Monday evening
     if(person.rule6){
       for(let d = 0; d < 28; d++){
-        if(getDow(d) === 1 && isWorking(sid,d) && getAssignment(sid,d) !== '晚' && !isDayOff(sid,d)){
+        if(getDow(d) === 1 && isWorking(sid,d) && !isShiftEvening(getAssignment(sid,d)) && !isDayOff(sid,d)){
           warnings.push({type:'error',msg:`${person.name}：${getDayLabel(d)}(一) 未排晚班（違反週一上晚班規定）`});
         }
       }
