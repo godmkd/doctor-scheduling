@@ -1005,7 +1005,7 @@ function runAutoSchedule(){
     }
   });
 
-  // Phase 11: Convert 早→早1/早2, 晚→晚1/晚2 randomly; preferNight晚班→強制晚2
+  // Phase 11: Only when 2+ people on same shift, convert 早→早1/早2, 晚→晚1/晚2
   for(let d = 0; d < 28; d++){
     const morningPeople = [];
     const eveningPeople = [];
@@ -1014,36 +1014,34 @@ function runAutoSchedule(){
       if(a === '早') morningPeople.push(p);
       if(a === '晚') eveningPeople.push(p);
     });
-    // Assign 早1/早2 randomly
-    morningPeople.sort(() => Math.random() - 0.5);
-    morningPeople.forEach((p, i) => {
-      setAssignment(p.id, d, `早${i+1}`);
-    });
-    // Assign 晚1/晚2: preferNight people get 晚2, others random
-    const preferNightPeople = eveningPeople.filter(p => p.preferNight);
-    const otherEvening = eveningPeople.filter(p => !p.preferNight);
-    // Shuffle others
-    otherEvening.sort(() => Math.random() - 0.5);
-    // Build assignment: preferNight → 晚2, others fill remaining
-    const eveningSlots = [];
-    for(let i = 0; i < eveningPeople.length; i++) eveningSlots.push(`晚${i+1}`);
-    // First assign 晚2 to preferNight people
-    preferNightPeople.forEach(p => {
-      const idx = eveningSlots.indexOf('晚2');
-      if(idx >= 0){
-        setAssignment(p.id, d, '晚2');
-        eveningSlots.splice(idx, 1);
-      } else {
-        // 晚2 already taken, assign whatever's left
+    // Only split if 2+ people
+    if(morningPeople.length >= 2){
+      morningPeople.sort(() => Math.random() - 0.5);
+      morningPeople.forEach((p, i) => {
+        setAssignment(p.id, d, `早${i+1}`);
+      });
+    }
+    if(eveningPeople.length >= 2){
+      const preferNightPeople = eveningPeople.filter(p => p.preferNight);
+      const otherEvening = eveningPeople.filter(p => !p.preferNight);
+      otherEvening.sort(() => Math.random() - 0.5);
+      const eveningSlots = [];
+      for(let i = 0; i < eveningPeople.length; i++) eveningSlots.push(`晚${i+1}`);
+      preferNightPeople.forEach(p => {
+        const idx = eveningSlots.indexOf('晚2');
+        if(idx >= 0){
+          setAssignment(p.id, d, '晚2');
+          eveningSlots.splice(idx, 1);
+        } else {
+          const slot = eveningSlots.shift();
+          if(slot) setAssignment(p.id, d, slot);
+        }
+      });
+      otherEvening.forEach(p => {
         const slot = eveningSlots.shift();
         if(slot) setAssignment(p.id, d, slot);
-      }
-    });
-    // Then assign remaining slots to others
-    otherEvening.forEach(p => {
-      const slot = eveningSlots.shift();
-      if(slot) setAssignment(p.id, d, slot);
-    });
+      });
+    }
   }
 
   saveState(); render();
