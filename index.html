@@ -1858,15 +1858,67 @@ function onDrop(e, sid, di){
   const dstShift = getAssignment(sid, di);
   if(!srcShift) return; // Source must have something (including 休)
 
-  // Always do a full swap between two cells
+  // Do swap
   clearAssignment(dragSid, dragDay, true);
   clearAssignment(sid, di, true);
-  // Place dst's value at src position, src's value at dst position
   if(dstShift) setAssignment(dragSid, dragDay, dstShift);
   if(srcShift) setAssignment(sid, di, srcShift);
 
+  // Check warnings after swap
+  const warnings = [];
+  // Check consecutive > 6
+  if(srcShift && srcShift !== '休' && wouldExceedConsecutiveCheck(sid, di))
+    warnings.push(`${getStaffById(sid)?.name || ''}：連續工作超過6天`);
+  if(dstShift && dstShift !== '休' && wouldExceedConsecutiveCheck(dragSid, dragDay))
+    warnings.push(`${getStaffById(dragSid)?.name || ''}：連續工作超過6天`);
+  // Check night-morning
+  if(srcShift && srcShift !== '休' && violatesNightMorning(sid, di, srcShift))
+    warnings.push(`${getStaffById(sid)?.name || ''}：晚班接早班`);
+  if(dstShift && dstShift !== '休' && violatesNightMorning(dragSid, dragDay, dstShift))
+    warnings.push(`${getStaffById(dragSid)?.name || ''}：晚班接早班`);
+  // Check weekly > 5
+  if(srcShift && srcShift !== '休'){
+    const p = getStaffById(sid);
+    if(p && countWeekWorkDays(sid, getWeekIndex(di)) > 5)
+      warnings.push(`${p.name}：一週上班超過5天`);
+  }
+  if(dstShift && dstShift !== '休'){
+    const p = getStaffById(dragSid);
+    if(p && countWeekWorkDays(dragSid, getWeekIndex(dragDay)) > 5)
+      warnings.push(`${p.name}：一週上班超過5天`);
+  }
+  // Check no leader on duty
+  [di, dragDay].forEach(d => {
+    let hasLeader = false;
+    state.staff.forEach(p => {
+      if((p.role === 'manager' || p.role === 'supervisor') && isWorking(p.id, d)) hasLeader = true;
+    });
+    if(!hasLeader) warnings.push(`${getDayLabel(d)}(${DOW_NAMES[getDow(d)]})：沒有主管上班`);
+  });
+
+  if(warnings.length > 0){
+    if(!confirm('⚠️ 警告：\n' + warnings.join('\n') + '\n\n確定要交換嗎？')){
+      // Undo swap
+      clearAssignment(dragSid, dragDay, true);
+      clearAssignment(sid, di, true);
+      if(srcShift) setAssignment(dragSid, dragDay, srcShift);
+      if(dstShift) setAssignment(sid, di, dstShift);
+      dragSid = null; dragDay = null;
+      render();
+      return;
+    }
+  }
+
   dragSid = null; dragDay = null;
   saveState(); render();
+}
+
+// Check consecutive after assignment (not "if added" but current state)
+function wouldExceedConsecutiveCheck(sid, di){
+  let run = 1;
+  for(let d = di - 1; d >= 0; d--){ if(isWorking(sid, d)) run++; else break; }
+  for(let d = di + 1; d < getTotalDays(); d++){ if(isWorking(sid, d)) run++; else break; }
+  return run > 6;
 }
 
 // ===== INIT =====
