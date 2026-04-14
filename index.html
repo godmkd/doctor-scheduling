@@ -273,8 +273,21 @@ function autoSchedule() {
     return doctors.filter(d => !d.offDates.includes(date));
   }
 
-  // Check if assigning doc to date violates consecutive rules
-  // Rules: 平日不能連續, 假日→平日不行, 平日→假日可以
+  // Check consecutive days for a doctor
+  function countConsecutive(docId, date, direction) {
+    let count = 0;
+    let d = parseDate(date);
+    while (true) {
+      d.setDate(d.getDate() + direction);
+      const ds = fmtDate(d);
+      if (schedule[ds] === docId) count++;
+      else break;
+      if (count > 5) break; // safety
+    }
+    return count;
+  }
+
+  // Check if assigning doc to date violates rules
   function wouldViolateConsecutive(docId, date) {
     const d = parseDate(date);
     const prev = new Date(d); prev.setDate(prev.getDate() - 1);
@@ -283,23 +296,26 @@ function autoSchedule() {
     const nextStr = fmtDate(next);
     const dateIsHol = isHoliday(date);
 
-    // 平日→平日 ❌ (never consecutive weekdays)
+    // Rule 1: 平日→平日 ❌
     if (!dateIsHol) {
       if (!isHoliday(prevStr) && schedule[prevStr] === docId) return true;
       if (!isHoliday(nextStr) && schedule[nextStr] === docId) return true;
     }
 
-    // 假日→平日 ❌ (holiday followed by weekday not allowed for same person)
+    // Rule 2: 假日→平日 ❌
     if (!dateIsHol && isHoliday(prevStr) && schedule[prevStr] === docId) return true;
-    // 平日→假日 ✅ (weekday followed by holiday is OK)
 
-    // 假日→假日: depends on mode
+    // Rule 3: 假日→假日 depends on mode
     if (dateIsHol && holidayMode === 'average') {
-      // No consecutive holidays in average mode
       if (isHoliday(prevStr) && schedule[prevStr] === docId) return true;
-      if (isHoliday(nextStr) && schedule[nextStr] === docId) return true;
     }
-    // 'allow' and 'force': holiday consecutive OK (max 3 handled in block logic)
+
+    // Rule 4: Max 3 consecutive days (e.g. 567=Fri+Sat+Sun OK, 4567 ❌)
+    if (holidayMode !== 'average') {
+      const beforeCount = countConsecutive(docId, date, -1);
+      const afterCount = countConsecutive(docId, date, 1);
+      if (beforeCount + 1 + afterCount > 3) return true;
+    }
 
     return false;
   }
@@ -604,7 +620,7 @@ function renderSummary() {
     html += `<div class="warning">⚠️ ${unassigned.length} 天未排班：${unassigned.map(d => `${d.slice(5)}(${dowName(d)})`).join('、')}</div>`;
   }
 
-  // Check consecutive violations
+  // Check violations
   const violations = [];
   dates.forEach((d, i) => {
     if (i === 0 || !schedule[d]) return;
@@ -613,12 +629,26 @@ function renderSummary() {
     const doc = doctors.find(x => x.id === schedule[d]);
     // 平日→平日 ❌
     if (!isHoliday(d) && !isHoliday(prev)) {
-      violations.push(`${doc?.name}: ${prev.slice(5)}→${d.slice(5)} 平日連續值班`);
+      violations.push(`${doc?.name}: ${prev.slice(5)}→${d.slice(5)} 平日連續`);
     }
     // 假日→平日 ❌
     if (!isHoliday(d) && isHoliday(prev)) {
       violations.push(`${doc?.name}: ${prev.slice(5)}(假)→${d.slice(5)} 假日接平日`);
     }
+  });
+  // Check >3 consecutive
+  doctors.forEach(doc => {
+    let streak = 0; let streakStart = '';
+    dates.forEach((d, i) => {
+      if (schedule[d] === doc.id) {
+        if (streak === 0) streakStart = d;
+        streak++;
+      } else {
+        if (streak > 3) violations.push(`${doc.name}: ${streakStart.slice(5)}起連續${streak}天（超過3天）`);
+        streak = 0;
+      }
+    });
+    if (streak > 3) violations.push(`${doc.name}: ${streakStart.slice(5)}起連續${streak}天（超過3天）`);
   });
   if (violations.length > 0) {
     html += `<div class="warning">⚠️ 平日連續值班：<br>${violations.join('<br>')}</div>`;
