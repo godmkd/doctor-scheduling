@@ -326,13 +326,12 @@ function autoSchedule() {
     if (avail.length === 0) return null;
 
     // Sort by: respect target days, then balance
-    const sorted = avail
+    // Shuffle first for randomness, then stable-sort by count
+    const shuffledAvail = [...avail].sort(() => Math.random() - 0.5);
+    const sorted = shuffledAvail
       .filter(d => {
-        // Skip if already assigned this date
         if (schedule[date] === d.id) return false;
-        // Consecutive check
         if (wouldViolateConsecutive(d.id, date)) return false;
-        // If target days set and already met (0 = use average)
         const targetDays = d.days > 0 ? d.days : Math.round(dates.length / doctors.length);
         if (counts[d.id].total >= targetDays) return false;
         return true;
@@ -341,9 +340,7 @@ function autoSchedule() {
         const catA = isHol ? counts[a.id].holiday : counts[a.id].weekday;
         const catB = isHol ? counts[b.id].holiday : counts[b.id].weekday;
         if (catA !== catB) return catA - catB;
-        const totDiff = counts[a.id].total - counts[b.id].total;
-        if (totDiff !== 0) return totDiff;
-        return Math.random() - 0.5; // Randomize among equals
+        return counts[a.id].total - counts[b.id].total;
       });
 
     return sorted[0] || null;
@@ -423,10 +420,8 @@ function autoSchedule() {
     }
   }
 
-  // Assign weekdays (no consecutive)
-  // Shuffle weekdays for randomness
-  const shuffled = [...weekdays].sort(() => Math.random() - 0.5);
-  for (const date of shuffled) {
+  // Assign weekdays in date order (not shuffled) to respect consecutive rules properly
+  for (const date of weekdays) {
     const doc = pickDoctor(date, false);
     if (doc) {
       schedule[date] = doc.id;
