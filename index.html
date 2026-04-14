@@ -438,7 +438,8 @@ function renderCalendar() {
     week.forEach(d => {
       const hol = isHoliday(d);
       const cls = hol ? 'weekend' : '';
-      html += `<th class="${cls}">${d.slice(5)}<br><span style="font-size:.7rem">${dowName(d)}</span>${TW_HOLIDAYS.has(d) ? '<br><span style="font-size:.65rem;color:var(--holiday)">假</span>' : ''}</th>`;
+      const isHol = isHoliday(d);
+      html += `<th class="${cls}" style="${isHol ? 'color:var(--off)' : ''}">${d.slice(5)}<br><span style="font-size:.7rem">${dowName(d)}</span>${TW_HOLIDAYS.has(d) ? '<br><span style="font-size:.65rem">假</span>' : ''}</th>`;
     });
     html += '</tr></thead><tbody>';
 
