@@ -113,7 +113,7 @@ const TW_HOLIDAYS = new Set([
   '2025-06-02','2025-10-06','2025-10-10',
   // 2026
   '2026-01-01','2026-01-02','2026-02-16','2026-02-17','2026-02-18','2026-02-19','2026-02-20',
-  '2026-02-27','2026-04-03','2026-04-06','2026-05-01','2026-05-25','2026-06-19',
+  '2026-02-27','2026-04-03','2026-04-06','2026-05-01','2026-05-31',
   '2026-10-05','2026-10-09','2026-10-10',
   // 2027
   '2027-01-01','2027-02-05','2027-02-06','2027-02-07','2027-02-08','2027-02-09',
@@ -264,8 +264,27 @@ function autoSchedule() {
   const holidays = dates.filter(d => isHoliday(d));
   const weekdays = dates.filter(d => !isHoliday(d));
 
+  // Fisher-Yates shuffle
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // Calculate fair targets: distribute remainder randomly
+  const avgFloor = Math.floor(dates.length / doctors.length);
+  const remainder = dates.length % doctors.length;
+  const targetMap = {};
+  const shuffledDocs = shuffle(doctors);
+  shuffledDocs.forEach((d, i) => {
+    targetMap[d.id] = d.days > 0 ? d.days : (i < remainder ? avgFloor + 1 : avgFloor);
+  });
+
   // Track assignments per doctor
-  const counts = {}; // { docId: { total, holiday, weekday } }
+  const counts = {};
   doctors.forEach(d => { counts[d.id] = { total: 0, holiday: 0, weekday: 0 }; });
 
   // Get available doctors for a date
@@ -326,14 +345,12 @@ function autoSchedule() {
     if (avail.length === 0) return null;
 
     // Sort by: respect target days, then balance
-    // Shuffle first for randomness, then stable-sort by count
-    const shuffledAvail = [...avail].sort(() => Math.random() - 0.5);
+    const shuffledAvail = shuffle(avail);
     const sorted = shuffledAvail
       .filter(d => {
         if (schedule[date] === d.id) return false;
         if (wouldViolateConsecutive(d.id, date)) return false;
-        const targetDays = d.days > 0 ? d.days : Math.round(dates.length / doctors.length);
-        if (counts[d.id].total >= targetDays) return false;
+        if (counts[d.id].total >= targetMap[d.id]) return false;
         return true;
       })
       .sort((a, b) => {
@@ -368,7 +385,7 @@ function autoSchedule() {
 
   if (holidayMode === 'force') {
     // Force: each holiday block assigned to one doctor (randomized among least-assigned)
-    const shuffledBlocks = [...holidayBlocks].sort(() => Math.random() - 0.5);
+    const shuffledBlocks = shuffle(holidayBlocks);
     for (const block of shuffledBlocks) {
       const avail = doctors
         .filter(d => block.every(date => !d.offDates.includes(date)))
@@ -384,7 +401,7 @@ function autoSchedule() {
     }
   } else if (holidayMode === 'allow') {
     // Allow: try to assign blocks to one person, but OK to split (randomized)
-    const shuffledBlocks2 = [...holidayBlocks].sort(() => Math.random() - 0.5);
+    const shuffledBlocks2 = shuffle(holidayBlocks);
     for (const block of shuffledBlocks2) {
       const avail = doctors
         .filter(d => block.every(date => !d.offDates.includes(date)))
@@ -392,8 +409,7 @@ function autoSchedule() {
       if (avail.length > 0) {
         // Try block assignment first
         const doc = avail[0];
-        const target = doc.days > 0 ? doc.days : Math.round(dates.length / doctors.length);
-        if (counts[doc.id].total + block.length <= target + 1) {
+        if (counts[doc.id].total + block.length <= targetMap[doc.id] + 1) {
           for (const date of block) {
             schedule[date] = doc.id;
             counts[doc.id].total++;
