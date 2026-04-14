@@ -81,7 +81,11 @@ main{flex:1;overflow:auto;padding:16px;max-height:calc(100vh - 120px)}
     <label>終止日 <input type="date" id="endDate"></label>
     <span class="header-stat" id="totalDaysInfo">總天數: 0</span>
     <span class="header-stat" id="avgDaysInfo">平均: 0</span>
-    <label><input type="checkbox" id="weekendConsecutive"> 五六日連續值班</label>
+    <label>假日排班：<select id="holidayMode" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.15);color:#fff;font-size:.85rem">
+      <option value="average">平均分配</option>
+      <option value="allow">接受連續</option>
+      <option value="force">強制連續</option>
+    </select></label>
     <button class="btn btn-white" onclick="autoSchedule()">⚡ 自動排班</button>
     <button class="btn btn-danger" onclick="clearSchedule()">🗑️ 清除</button>
     <button class="btn btn-white" onclick="exportSchedule()">📥 匯出</button>
@@ -254,7 +258,7 @@ function autoSchedule() {
   if (doctors.length === 0) { alert('請先新增醫師'); return; }
 
   schedule = {};
-  const consecutive = document.getElementById('weekendConsecutive').checked;
+  const holidayMode = document.getElementById('holidayMode').value; // 'average', 'allow', 'force'
 
   // Separate holiday and weekday dates
   const holidays = dates.filter(d => isHoliday(d));
@@ -269,18 +273,34 @@ function autoSchedule() {
     return doctors.filter(d => !d.offDates.includes(date));
   }
 
-  // Check if assigning doc to date violates weekday consecutive rule
-  function wouldBeConsecutiveWeekday(docId, date) {
+  // Check if assigning doc to date violates consecutive rules
+  // Rules: 平日不能連續, 假日→平日不行, 平日→假日可以
+  function wouldViolateConsecutive(docId, date) {
     const d = parseDate(date);
     const prev = new Date(d); prev.setDate(prev.getDate() - 1);
     const next = new Date(d); next.setDate(next.getDate() + 1);
     const prevStr = fmtDate(prev);
     const nextStr = fmtDate(next);
-    // Only check weekday consecutive (holidays can be consecutive if option on)
-    if (!isHoliday(date)) {
+    const dateIsHol = isHoliday(date);
+
+    // 平日→平日 ❌ (never consecutive weekdays)
+    if (!dateIsHol) {
       if (!isHoliday(prevStr) && schedule[prevStr] === docId) return true;
       if (!isHoliday(nextStr) && schedule[nextStr] === docId) return true;
     }
+
+    // 假日→平日 ❌ (holiday followed by weekday not allowed for same person)
+    if (!dateIsHol && isHoliday(prevStr) && schedule[prevStr] === docId) return true;
+    // 平日→假日 ✅ (weekday followed by holiday is OK)
+
+    // 假日→假日: depends on mode
+    if (dateIsHol && holidayMode === 'average') {
+      // No consecutive holidays in average mode
+      if (isHoliday(prevStr) && schedule[prevStr] === docId) return true;
+      if (isHoliday(nextStr) && schedule[nextStr] === docId) return true;
+    }
+    // 'allow' and 'force': holiday consecutive OK (max 3 handled in block logic)
+
     return false;
   }
 
@@ -294,8 +314,8 @@ function autoSchedule() {
       .filter(d => {
         // Skip if already assigned this date
         if (schedule[date] === d.id) return false;
-        // Weekday consecutive check
-        if (!isHol && wouldBeConsecutiveWeekday(d.id, date)) return false;
+        // Consecutive check
+        if (wouldViolateConsecutive(d.id, date)) return false;
         // If target days set and already met (0 = use average)
         const targetDays = d.days > 0 ? d.days : Math.round(dates.length / doctors.length);
         if (counts[d.id].total >= targetDays) return false;
@@ -311,34 +331,32 @@ function autoSchedule() {
     return sorted[0] || null;
   }
 
-  // Handle weekend consecutive mode
-  if (consecutive) {
-    // Group holidays into consecutive blocks (Fri-Sat-Sun or holiday clusters)
-    const holidayBlocks = [];
-    let currentBlock = [];
-    for (const d of holidays) {
-      if (currentBlock.length === 0) {
+  // Group holidays into consecutive blocks
+  const holidayBlocks = [];
+  let currentBlock = [];
+  for (const d of holidays) {
+    if (currentBlock.length === 0) {
+      currentBlock.push(d);
+    } else {
+      const last = parseDate(currentBlock[currentBlock.length - 1]);
+      const cur = parseDate(d);
+      const diff = (cur - last) / 86400000;
+      if (diff === 1) {
         currentBlock.push(d);
       } else {
-        const last = parseDate(currentBlock[currentBlock.length - 1]);
-        const cur = parseDate(d);
-        const diff = (cur - last) / 86400000;
-        if (diff === 1) {
-          currentBlock.push(d);
-        } else {
-          holidayBlocks.push([...currentBlock]);
-          currentBlock = [d];
-        }
+        holidayBlocks.push([...currentBlock]);
+        currentBlock = [d];
       }
     }
-    if (currentBlock.length > 0) holidayBlocks.push(currentBlock);
+  }
+  if (currentBlock.length > 0) holidayBlocks.push(currentBlock);
 
-    // Assign each block to one doctor (round-robin by least holiday count)
+  if (holidayMode === 'force') {
+    // Force: each holiday block assigned to one doctor
     for (const block of holidayBlocks) {
       const avail = doctors
         .filter(d => block.every(date => !d.offDates.includes(date)))
         .sort((a, b) => counts[a.id].holiday - counts[b.id].holiday || counts[a.id].total - counts[b.id].total);
-
       if (avail.length > 0) {
         const doc = avail[0];
         for (const date of block) {
@@ -346,20 +364,35 @@ function autoSchedule() {
           counts[doc.id].total++;
           counts[doc.id].holiday++;
         }
-      } else {
-        // Fallback: assign individually
-        for (const date of block) {
-          const doc = pickDoctor(date, true);
-          if (doc) {
+      }
+    }
+  } else if (holidayMode === 'allow') {
+    // Allow: try to assign blocks to one person, but OK to split
+    for (const block of holidayBlocks) {
+      const avail = doctors
+        .filter(d => block.every(date => !d.offDates.includes(date)))
+        .sort((a, b) => counts[a.id].holiday - counts[b.id].holiday || counts[a.id].total - counts[b.id].total);
+      if (avail.length > 0) {
+        // Try block assignment first
+        const doc = avail[0];
+        const target = doc.days > 0 ? doc.days : Math.round(dates.length / doctors.length);
+        if (counts[doc.id].total + block.length <= target + 1) {
+          for (const date of block) {
             schedule[date] = doc.id;
             counts[doc.id].total++;
             counts[doc.id].holiday++;
+          }
+        } else {
+          // Split: assign individually
+          for (const date of block) {
+            const d = pickDoctor(date, true);
+            if (d) { schedule[date] = d.id; counts[d.id].total++; counts[d.id].holiday++; }
           }
         }
       }
     }
   } else {
-    // Assign holidays individually, balanced
+    // Average: assign holidays individually, balanced
     for (const date of holidays) {
       const doc = pickDoctor(date, true);
       if (doc) {
@@ -571,14 +604,20 @@ function renderSummary() {
     html += `<div class="warning">⚠️ ${unassigned.length} 天未排班：${unassigned.map(d => `${d.slice(5)}(${dowName(d)})`).join('、')}</div>`;
   }
 
-  // Check weekday consecutive violations
+  // Check consecutive violations
   const violations = [];
   dates.forEach((d, i) => {
-    if (i === 0) return;
+    if (i === 0 || !schedule[d]) return;
     const prev = dates[i - 1];
-    if (!isHoliday(d) && !isHoliday(prev) && schedule[d] && schedule[d] === schedule[prev]) {
-      const doc = doctors.find(x => x.id === schedule[d]);
+    if (!schedule[prev] || schedule[d] !== schedule[prev]) return;
+    const doc = doctors.find(x => x.id === schedule[d]);
+    // 平日→平日 ❌
+    if (!isHoliday(d) && !isHoliday(prev)) {
       violations.push(`${doc?.name}: ${prev.slice(5)}→${d.slice(5)} 平日連續值班`);
+    }
+    // 假日→平日 ❌
+    if (!isHoliday(d) && isHoliday(prev)) {
+      violations.push(`${doc?.name}: ${prev.slice(5)}(假)→${d.slice(5)} 假日接平日`);
     }
   });
   if (violations.length > 0) {
@@ -654,7 +693,7 @@ function init() {
     if (saved.schedule) schedule = saved.schedule;
     if (saved.startDate) document.getElementById('startDate').value = saved.startDate;
     if (saved.endDate) document.getElementById('endDate').value = saved.endDate;
-    if (saved.consecutive) document.getElementById('weekendConsecutive').checked = saved.consecutive;
+    if (saved.holidayMode) document.getElementById('holidayMode').value = saved.holidayMode;
   } catch(e) {}
 
   renderDoctors();
@@ -667,7 +706,7 @@ function init() {
       doctors, schedule,
       startDate: document.getElementById('startDate').value,
       endDate: document.getElementById('endDate').value,
-      consecutive: document.getElementById('weekendConsecutive').checked
+      holidayMode: document.getElementById('holidayMode').value
     }));
   }, 3000);
 }
