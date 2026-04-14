@@ -198,29 +198,51 @@ function removeOffDate(docId, date) {
   renderDoctors();
 }
 
+window._offSelectDocId = null;
+function toggleOffSelect(docId) {
+  if (window._offSelectDocId === docId) {
+    window._offSelectDocId = null;
+  } else {
+    window._offSelectDocId = docId;
+  }
+  renderDoctors();
+  renderCalendar();
+}
+
+function toggleOffDate(date) {
+  if (!window._offSelectDocId) return;
+  const doc = doctors.find(d => d.id === window._offSelectDocId);
+  if (!doc) return;
+  if (doc.offDates.includes(date)) {
+    doc.offDates = doc.offDates.filter(d => d !== date);
+  } else {
+    doc.offDates.push(date);
+    doc.offDates.sort();
+  }
+  renderDoctors();
+  renderCalendar();
+}
+
 function renderDoctors() {
   const el = document.getElementById('doctorList');
   if (doctors.length === 0) {
     el.innerHTML = '<div style="text-align:center;color:var(--text2);padding:20px;font-size:.85rem">點「＋ 新增」加入醫師</div>';
     return;
   }
+  const dates = getDateRange();
+  const avgDays = doctors.length > 0 ? Math.round(dates.length / doctors.length) : 0;
   el.innerHTML = doctors.map(doc => {
     const assigned = Object.values(schedule).filter(id => id === doc.id).length;
-    return `<div class="doc-card">
+    const isSelecting = window._offSelectDocId === doc.id;
+    return `<div class="doc-card" style="${isSelecting ? 'border-color:var(--off);background:var(--off-light)' : ''}">
       <div class="doc-row">
-        <input type="text" value="${doc.name}" onchange="updateDoctor(${doc.id},'name',this.value)" style="font-weight:600">
-        <label style="font-size:.78rem;color:var(--text2);white-space:nowrap">天數</label>
-        <input type="number" value="${doc.days}" min="0" onchange="updateDoctor(${doc.id},'days',this.value)">
-        <span style="font-size:.75rem;color:var(--text2)">(已排:${assigned})</span>
-        <button onclick="removeDoctor(${doc.id})" style="color:var(--danger);font-size:.9rem" title="刪除">✕</button>
+        <input type="text" value="${doc.name}" onchange="updateDoctor(${doc.id},'name',this.value)" style="font-weight:600;max-width:70px">
+        <input type="number" value="${doc.days || ''}" min="0" placeholder="${avgDays}" onchange="updateDoctor(${doc.id},'days',this.value)" style="width:45px" title="天數（空=平均${avgDays}天）">
+        <span style="font-size:.72rem;color:var(--text2)">${assigned}天</span>
+        <button class="btn btn-sm ${isSelecting ? 'btn-outline' : ''}" style="font-size:.7rem;padding:2px 6px;${isSelecting ? 'background:var(--off);color:#fff' : 'background:var(--off-light);color:var(--off)'}" onclick="toggleOffSelect(${doc.id})">${isSelecting ? '✓ 完成' : '✕ 不排班'}</button>
+        <button onclick="removeDoctor(${doc.id})" style="color:var(--danger);font-size:.85rem" title="刪除">🗑</button>
       </div>
-      <div class="doc-off">
-        不排班日：${doc.offDates.map(d => `<span onclick="removeOffDate(${doc.id},'${d}')" title="點擊移除">${d.slice(5)} (${dowName(d)})</span>`).join('') || '<em style="color:#aaa">無</em>'}
-        <div style="display:flex;gap:4px;margin-top:4px">
-          <input type="date" id="offInput_${doc.id}" style="padding:2px 6px;border:1px solid var(--border);border-radius:4px;font-size:.78rem;flex:1">
-          <button class="btn btn-sm btn-outline" onclick="addOffDate(${doc.id})">＋</button>
-        </div>
-      </div>
+      ${doc.offDates.length > 0 ? `<div class="doc-off">${doc.offDates.map(d => `<span onclick="removeOffDate(${doc.id},'${d}')" title="點擊移除">${d.slice(5)}${dowName(d)}</span>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -274,8 +296,9 @@ function autoSchedule() {
         if (schedule[date] === d.id) return false;
         // Weekday consecutive check
         if (!isHol && wouldBeConsecutiveWeekday(d.id, date)) return false;
-        // If target days set and already met
-        if (d.days > 0 && counts[d.id].total >= d.days) return false;
+        // If target days set and already met (0 = use average)
+        const targetDays = d.days > 0 ? d.days : Math.round(dates.length / doctors.length);
+        if (counts[d.id].total >= targetDays) return false;
         return true;
       })
       .sort((a, b) => {
@@ -314,7 +337,7 @@ function autoSchedule() {
     for (const block of holidayBlocks) {
       const avail = doctors
         .filter(d => block.every(date => !d.offDates.includes(date)))
-        .filter(d => d.days === 0 || counts[d.id].total + block.length <= d.days)
+        .filter(d => { const target = d.days > 0 ? d.days : Math.round(dates.length / doctors.length); return counts[d.id].total + block.length <= target; })
         .sort((a, b) => counts[a.id].holiday - counts[b.id].holiday || counts[a.id].total - counts[b.id].total);
 
       if (avail.length > 0) {
@@ -430,8 +453,13 @@ function renderCalendar() {
       if (doc) cls += ' assigned';
       if (isToday) cls += ' today';
 
+      // Highlight off-days when in selection mode
+      const selectingDoc = window._offSelectDocId ? doctors.find(x => x.id === window._offSelectDocId) : null;
+      const isOffForSelected = selectingDoc && selectingDoc.offDates.includes(d);
+      if (isOffForSelected) cls += ' off-day';
+
       const color = doc ? colorMap[doc.id] : '';
-      const style = doc ? `color:${color};border-left:3px solid ${color}` : '';
+      const style = doc ? `color:${color};border-left:3px solid ${color}` : (isOffForSelected ? 'background:#fee2e2;cursor:pointer' : '');
 
       html += `<td class="${cls}" style="${style}"
         draggable="${doc ? 'true' : 'false'}"
@@ -439,7 +467,7 @@ function renderCalendar() {
         ondragover="onDragOver(event)"
         ondragleave="onDragLeave(event)"
         ondrop="onDrop(event,'${d}')"
-        onclick="manualAssign('${d}')"
+        onclick="window._offSelectDocId ? toggleOffDate('${d}') : manualAssign('${d}')"
         title="${d} ${dowName(d)}${doc ? ' - ' + doc.name : ''}"
       >${doc ? doc.name : ''}</td>`;
     });
