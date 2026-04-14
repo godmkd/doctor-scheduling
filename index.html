@@ -443,6 +443,62 @@ function autoSchedule() {
     }
   }
 
+  // ===== Correction Pass: fix violations =====
+  let corrected = true;
+  let maxIter = 50;
+  while (corrected && maxIter-- > 0) {
+    corrected = false;
+    for (let i = 1; i < dates.length; i++) {
+      const d = dates[i];
+      const prev = dates[i - 1];
+      if (!schedule[d] || !schedule[prev] || schedule[d] !== schedule[prev]) continue;
+      const docId = schedule[d];
+
+      let violation = false;
+      // 假日→平日 ❌
+      if (!isHoliday(d) && isHoliday(prev)) violation = true;
+      // 平日→平日 ❌
+      if (!isHoliday(d) && !isHoliday(prev)) violation = true;
+      // >3 consecutive
+      if (!violation) {
+        let streak = 1;
+        let j = i - 1;
+        while (j >= 0 && schedule[dates[j]] === docId) { streak++; j--; }
+        if (streak > 3) violation = true;
+      }
+
+      if (violation) {
+        // Try to swap d's assignment with another doctor on a different date
+        const swapCandidates = dates.filter(sd =>
+          sd !== d && sd !== prev && schedule[sd] && schedule[sd] !== docId &&
+          !doctors.find(x => x.id === docId)?.offDates.includes(sd) &&
+          !doctors.find(x => x.id === schedule[sd])?.offDates.includes(d)
+        );
+        for (const sd of swapCandidates) {
+          const otherDoc = schedule[sd];
+          // Test swap
+          schedule[d] = otherDoc;
+          schedule[sd] = docId;
+          // Check if swap creates new violations for both
+          let newViolation = false;
+          // Check around d
+          if (i > 0 && schedule[dates[i-1]] === otherDoc && !isHoliday(d) && !isHoliday(dates[i-1])) newViolation = true;
+          if (i > 0 && schedule[dates[i-1]] === otherDoc && !isHoliday(d) && isHoliday(dates[i-1])) newViolation = true;
+          if (i < dates.length-1 && schedule[dates[i+1]] === otherDoc && isHoliday(d) && !isHoliday(dates[i+1])) newViolation = true;
+
+          if (!newViolation) {
+            corrected = true;
+            break;
+          } else {
+            // Revert swap
+            schedule[d] = docId;
+            schedule[sd] = otherDoc;
+          }
+        }
+      }
+    }
+  }
+
   renderCalendar();
   renderSummary();
 }
