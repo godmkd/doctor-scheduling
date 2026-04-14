@@ -337,7 +337,6 @@ function autoSchedule() {
     for (const block of holidayBlocks) {
       const avail = doctors
         .filter(d => block.every(date => !d.offDates.includes(date)))
-        .filter(d => { const target = d.days > 0 ? d.days : Math.round(dates.length / doctors.length); return counts[d.id].total + block.length <= target; })
         .sort((a, b) => counts[a.id].holiday - counts[b.id].holiday || counts[a.id].total - counts[b.id].total);
 
       if (avail.length > 0) {
@@ -594,11 +593,39 @@ function exportSchedule() {
   const dates = getDateRange();
   if (dates.length === 0) { alert('沒有排班資料'); return; }
 
-  let csv = '日期,星期,值班醫師,類型\n';
+  // Calendar format: header = 日 一 二 三 四 五 六, rows = weeks
+  let csv = '日,一,二,三,四,五,六\n';
+
+  // Find first Sunday (or pad with empty)
+  let idx = 0;
+  const firstDow = getDow(dates[0]);
+  // Pad start
+  const startPad = firstDow; // 0=Sun needs 0 pad, 1=Mon needs 1 pad, etc.
+  let row = new Array(startPad).fill('');
+
   dates.forEach(d => {
-    const doc = schedule[d] ? doctors.find(x => x.id === schedule[d])?.name || '' : '未排';
-    const type = isHoliday(d) ? '假日' : '平日';
-    csv += `${d},${dowName(d)},${doc},${type}\n`;
+    const doc = schedule[d] ? doctors.find(x => x.id === schedule[d])?.name || '' : '';
+    const label = `${d.slice(5)}${isHoliday(d)?'(假)':''} ${doc}`;
+    row.push(label);
+    if (row.length === 7) {
+      csv += row.join(',') + '\n';
+      row = [];
+    }
+  });
+  // Pad end
+  if (row.length > 0) {
+    while (row.length < 7) row.push('');
+    csv += row.join(',') + '\n';
+  }
+
+  // Add summary
+  csv += '\n醫師,目標天數,已排天數,平日,假日\n';
+  doctors.forEach(doc => {
+    const assigned = Object.entries(schedule).filter(([d, id]) => id === doc.id);
+    const hol = assigned.filter(([d]) => isHoliday(d)).length;
+    const wd = assigned.length - hol;
+    const target = doc.days > 0 ? doc.days : Math.round(dates.length / doctors.length);
+    csv += `${doc.name},${target},${assigned.length},${wd},${hol}\n`;
   });
 
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
