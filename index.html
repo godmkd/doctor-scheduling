@@ -718,29 +718,29 @@ function exportSchedule() {
   const dates = getDateRange();
   if (dates.length === 0) { alert('沒有排班資料'); return; }
 
-  // Calendar format: header = 日 一 二 三 四 五 六, rows = weeks
+  // Calendar format: date on top, name below
   let csv = '日,一,二,三,四,五,六\n';
 
-  // Find first Sunday (or pad with empty)
-  let idx = 0;
   const firstDow = getDow(dates[0]);
-  // Pad start
-  const startPad = firstDow; // 0=Sun needs 0 pad, 1=Mon needs 1 pad, etc.
-  let row = new Array(startPad).fill('');
+  let dateRow = new Array(firstDow).fill('');
+  let nameRow = new Array(firstDow).fill('');
 
   dates.forEach(d => {
     const doc = schedule[d] ? doctors.find(x => x.id === schedule[d])?.name || '' : '';
-    const label = `${d.slice(5)}${isHoliday(d)?'(假)':''} ${doc}`;
-    row.push(label);
-    if (row.length === 7) {
-      csv += row.join(',') + '\n';
-      row = [];
+    dateRow.push(`${d.slice(5)}${isHoliday(d)?'(假)':''}`);
+    nameRow.push(doc);
+    if (dateRow.length === 7) {
+      csv += dateRow.join(',') + '\n';
+      csv += nameRow.join(',') + '\n';
+      csv += '\n'; // blank line between weeks
+      dateRow = [];
+      nameRow = [];
     }
   });
-  // Pad end
-  if (row.length > 0) {
-    while (row.length < 7) row.push('');
-    csv += row.join(',') + '\n';
+  if (dateRow.length > 0) {
+    while (dateRow.length < 7) { dateRow.push(''); nameRow.push(''); }
+    csv += dateRow.join(',') + '\n';
+    csv += nameRow.join(',') + '\n';
   }
 
   // Add summary
