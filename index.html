@@ -126,7 +126,7 @@ let dragSource = null;
 function fmtDate(d) { return d.toISOString().slice(0,10); }
 function parseDate(s) { return new Date(s + 'T12:00:00'); }
 function getDow(dateStr) { return parseDate(dateStr).getDay(); } // 0=Sun
-function isWeekend(dateStr) { const d = getDow(dateStr); return d === 0 || d === 5 || d === 6; }
+function isWeekend(dateStr) { const d = getDow(dateStr); return d === 0 || d === 6; } // 六日=假日，五=平日
 function isHoliday(dateStr) { return isWeekend(dateStr) || TW_HOLIDAYS.has(dateStr); }
 function dowName(dateStr) { return '日一二三四五六'[getDow(dateStr)]; }
 
