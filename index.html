@@ -340,8 +340,10 @@ function autoSchedule() {
       .sort((a, b) => {
         const catA = isHol ? counts[a.id].holiday : counts[a.id].weekday;
         const catB = isHol ? counts[b.id].holiday : counts[b.id].weekday;
-        if (catA !== catB) return catA - catB; // Least assigned in category first
-        return counts[a.id].total - counts[b.id].total; // Then least total
+        if (catA !== catB) return catA - catB;
+        const totDiff = counts[a.id].total - counts[b.id].total;
+        if (totDiff !== 0) return totDiff;
+        return Math.random() - 0.5; // Randomize among equals
       });
 
     return sorted[0] || null;
@@ -368,11 +370,12 @@ function autoSchedule() {
   if (currentBlock.length > 0) holidayBlocks.push(currentBlock);
 
   if (holidayMode === 'force') {
-    // Force: each holiday block assigned to one doctor
-    for (const block of holidayBlocks) {
+    // Force: each holiday block assigned to one doctor (randomized among least-assigned)
+    const shuffledBlocks = [...holidayBlocks].sort(() => Math.random() - 0.5);
+    for (const block of shuffledBlocks) {
       const avail = doctors
         .filter(d => block.every(date => !d.offDates.includes(date)))
-        .sort((a, b) => counts[a.id].holiday - counts[b.id].holiday || counts[a.id].total - counts[b.id].total);
+        .sort((a, b) => counts[a.id].holiday - counts[b.id].holiday || Math.random() - 0.5);
       if (avail.length > 0) {
         const doc = avail[0];
         for (const date of block) {
@@ -383,11 +386,12 @@ function autoSchedule() {
       }
     }
   } else if (holidayMode === 'allow') {
-    // Allow: try to assign blocks to one person, but OK to split
-    for (const block of holidayBlocks) {
+    // Allow: try to assign blocks to one person, but OK to split (randomized)
+    const shuffledBlocks2 = [...holidayBlocks].sort(() => Math.random() - 0.5);
+    for (const block of shuffledBlocks2) {
       const avail = doctors
         .filter(d => block.every(date => !d.offDates.includes(date)))
-        .sort((a, b) => counts[a.id].holiday - counts[b.id].holiday || counts[a.id].total - counts[b.id].total);
+        .sort((a, b) => counts[a.id].holiday - counts[b.id].holiday || Math.random() - 0.5);
       if (avail.length > 0) {
         // Try block assignment first
         const doc = avail[0];
